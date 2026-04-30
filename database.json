@@ -1,6 +1,6 @@
 {
   "_note": "Live game data is mirrored from browser localStorage (key 'pluckDb'). To reset all scores, clear localStorage.",
-  "lastUpdated": "2026-04-30T00:45:24.689Z",
+  "lastUpdated": "2026-04-30T01:21:35.104Z",
   "users": {
     "Chris": {
       "scores": [
@@ -24,13 +24,14 @@
         4,
         6,
         8,
-        8
+        8,
+        7
       ],
       "bestScore": 25,
-      "plays": 21,
+      "plays": 22,
       "firstPlayed": "2026-04-29T10:29:50.235Z",
-      "lastPlayed": "2026-04-30T00:45:24.689Z",
-      "lastDurationMs": 22091.499999999993,
+      "lastPlayed": "2026-04-30T01:21:35.104Z",
+      "lastDurationMs": 8116.5,
       "bestDurationMs": 44774.899999999994
     },
     "dsfg": {

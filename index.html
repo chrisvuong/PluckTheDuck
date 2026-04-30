@@ -336,6 +336,44 @@
   </div>
 </div>
 
+<!-- Firebase config (window.firebaseConfig). These keys are public-by-design. -->
+<script src="public.js"></script>
+<!-- Firebase SDK + small wrapper that exposes window._fb for the game script -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
+  import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+  if (window.firebaseConfig) {
+    try {
+      const app = initializeApp(window.firebaseConfig);
+      const db = getFirestore(app);
+      const ref = doc(db, 'pluck', 'main');
+      window._fb = {
+        async loadDb() {
+          try {
+            const snap = await getDoc(ref);
+            return snap.exists() ? { users: (snap.data() && snap.data().users) || {} } : { users: {} };
+          } catch (e) {
+            console.warn('[Firebase] loadDb failed:', e.message); return null;
+          }
+        },
+        async saveDb(data) {
+          try {
+            await setDoc(ref, { users: data.users || {}, lastUpdated: new Date().toISOString() });
+          } catch (e) {
+            console.warn('[Firebase] saveDb failed:', e.message);
+          }
+        },
+      };
+      window.dispatchEvent(new Event('firebaseReady'));
+      console.log('[Firebase] connected to project', window.firebaseConfig.projectId);
+    } catch (e) {
+      console.warn('[Firebase] init failed:', e.message);
+    }
+  } else {
+    console.warn('[Firebase] no config — set window.firebaseConfig in env.js. Falling back to localStorage only.');
+  }
+</script>
+
 <script>
 (() => {
   // ---------- canvas + sizing ----------
@@ -500,6 +538,11 @@
   }
   function saveDb(db) {
     try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+    // Mirror to Firebase if it's connected (live shared scoreboard)
+    if (window._fb && typeof window._fb.saveDb === 'function') {
+      window._fb.saveDb(db);
+    }
+    // Also fire the legacy local Node helper (server.js) — silent if it's not running
     syncToServer(db);
   }
   // POST the live database to the optional Node helper (server.js). Silently no-ops if the
@@ -552,16 +595,53 @@
     arr.sort((a, b) => b.bestScore - a.bestScore || (b.plays || 0) - (a.plays || 0));
     return arr.slice(0, limit);
   }
-  // First-run seed: try to fetch database.json (works on http://, often blocked on file://).
-  // If it loads and localStorage is empty, copy the users into localStorage.
-  (function seedFromJson() {
-    if (localStorage.getItem(DB_KEY)) return; // already have live data
-    fetch('database.json').then(r => r.ok ? r.json() : null).then(j => {
-      if (!j || !j.users) return;
-      if (localStorage.getItem(DB_KEY)) return;
-      saveDb({ users: j.users });
-    }).catch(() => {});
-  })();
+  // On page load, pull the live scoreboard from Firebase and merge it with any local-only data.
+  // This makes the scoreboard cross-device while still letting offline plays be uploaded later.
+  function pullFromFirebase() {
+    if (!window._fb || typeof window._fb.loadDb !== 'function') return;
+    window._fb.loadDb().then(remote => {
+      if (!remote || !remote.users) return;
+      const local = loadDb();
+      const merged = { users: {} };
+      const allNames = new Set([
+        ...Object.keys(local.users || {}),
+        ...Object.keys(remote.users || {}),
+      ]);
+      for (const name of allNames) {
+        const l = (local.users || {})[name];
+        const r = (remote.users || {})[name];
+        if (l && r) {
+          // Take the better record per field
+          merged.users[name] = {
+            ...r, ...l,                                                // local fields shadow remote
+            scores: (r.scores || []).concat(l.scores || []).slice(-50),
+            bestScore: Math.max(l.bestScore || 0, r.bestScore || 0),
+            bestDurationMs: Math.max(l.bestDurationMs || 0, r.bestDurationMs || 0),
+            plays: Math.max(l.plays || 0, r.plays || 0),
+            firstPlayed: l.firstPlayed && r.firstPlayed
+              ? (l.firstPlayed < r.firstPlayed ? l.firstPlayed : r.firstPlayed)
+              : (l.firstPlayed || r.firstPlayed),
+            lastPlayed: l.lastPlayed && r.lastPlayed
+              ? (l.lastPlayed > r.lastPlayed ? l.lastPlayed : r.lastPlayed)
+              : (l.lastPlayed || r.lastPlayed),
+          };
+        } else {
+          merged.users[name] = l || r;
+        }
+      }
+      // Persist the merged state both ways
+      try { localStorage.setItem(DB_KEY, JSON.stringify(merged)); } catch(e) {}
+      window._fb.saveDb(merged);
+      // Refresh title-screen welcome message + open scoreboard if applicable
+      try {
+        if (typeof refreshWelcome === 'function') refreshWelcome();
+        const sb = document.getElementById('scoreboardScreen');
+        if (sb && !sb.classList.contains('hidden')) renderScoreboard();
+      } catch(e) {}
+    });
+  }
+  if (window._fb) pullFromFirebase();
+  else window.addEventListener('firebaseReady', pullFromFirebase, { once: true });
   function escapeHtml(s) {
     return String(s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -2721,6 +2801,8 @@
     }).join('');
   }
   function showScoreboard() {
+    // Pull fresh data from Firebase first; the pull's callback will re-render once complete
+    pullFromFirebase();
     renderScoreboard();
     document.getElementById('titleScreen').classList.add('hidden');
     document.getElementById('titleScreen').classList.remove('active');
