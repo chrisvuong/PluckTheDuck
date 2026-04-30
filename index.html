@@ -527,23 +527,36 @@
     return Math.min(0.95, c);
   }
 
-  // ---------- user database (persisted to localStorage; database.json provides initial seed) ----------
+  // ---------- user database ----------
+  // Firebase Firestore is the source of truth. _liveDb mirrors it in memory for fast sync reads.
+  // localStorage is only used as a one-paint offline fallback while Firebase is fetching.
   const DB_KEY = 'pluckDb';
-  function loadDb() {
+  let _liveDb = { users: {} };
+
+  // Hydrate from localStorage once on script load so the title screen has SOMETHING to show
+  // before the Firestore round-trip completes. This is the only read of localStorage.
+  (function hydrateFromLocal() {
     try {
       const s = localStorage.getItem(DB_KEY);
-      if (s) return JSON.parse(s);
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (parsed && parsed.users) _liveDb = parsed;
+      }
     } catch(e) {}
-    return { users: {} };
-  }
+  })();
+
+  function loadDb() { return _liveDb; }       // sync read of the in-memory live state
+
   function saveDb(db) {
-    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
-    // Mirror to Firebase if it's connected (live shared scoreboard)
+    _liveDb = db;
+    // Patch the server (Firebase) with the new state — this is the authoritative write.
     if (window._fb && typeof window._fb.saveDb === 'function') {
       window._fb.saveDb(db);
     }
-    // Also fire the legacy local Node helper (server.js) — silent if it's not running
+    // Local Node helper (server.js) — only on localhost
     syncToServer(db);
+    // Persist a local mirror so a refresh before Firebase responds still has data
+    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
   }
   // POST the live database to the optional Node helper (server.js). Only runs on localhost so
   // it doesn't 405 on GitHub Pages / production hosts where Firebase is the real backend.
@@ -597,53 +610,38 @@
     arr.sort((a, b) => b.bestScore - a.bestScore || (b.plays || 0) - (a.plays || 0));
     return arr.slice(0, limit);
   }
-  // On page load, pull the live scoreboard from Firebase and merge it with any local-only data.
-  // This makes the scoreboard cross-device while still letting offline plays be uploaded later.
-  function pullFromFirebase() {
-    if (!window._fb || typeof window._fb.loadDb !== 'function') return;
-    window._fb.loadDb().then(remote => {
-      if (!remote || !remote.users) return;
-      const local = loadDb();
-      const merged = { users: {} };
-      const allNames = new Set([
-        ...Object.keys(local.users || {}),
-        ...Object.keys(remote.users || {}),
-      ]);
-      for (const name of allNames) {
-        const l = (local.users || {})[name];
-        const r = (remote.users || {})[name];
-        if (l && r) {
-          // Take the better record per field
-          merged.users[name] = {
-            ...r, ...l,                                                // local fields shadow remote
-            scores: (r.scores || []).concat(l.scores || []).slice(-50),
-            bestScore: Math.max(l.bestScore || 0, r.bestScore || 0),
-            bestDurationMs: Math.max(l.bestDurationMs || 0, r.bestDurationMs || 0),
-            plays: Math.max(l.plays || 0, r.plays || 0),
-            firstPlayed: l.firstPlayed && r.firstPlayed
-              ? (l.firstPlayed < r.firstPlayed ? l.firstPlayed : r.firstPlayed)
-              : (l.firstPlayed || r.firstPlayed),
-            lastPlayed: l.lastPlayed && r.lastPlayed
-              ? (l.lastPlayed > r.lastPlayed ? l.lastPlayed : r.lastPlayed)
-              : (l.lastPlayed || r.lastPlayed),
-          };
-        } else {
-          merged.users[name] = l || r;
-        }
+  // Pull fresh scoreboard from the server (Firebase). Server is authoritative — overwrites
+  // _liveDb with whatever the server has. Called on app init and any time the scoreboard
+  // is opened. Idempotent and safe to call concurrently.
+  let _fetching = false;
+  async function fetchFromServer() {
+    if (!window._fb || typeof window._fb.loadDb !== 'function') return false;
+    if (_fetching) return false;
+    _fetching = true;
+    try {
+      const remote = await window._fb.loadDb();
+      if (remote && remote.users) {
+        _liveDb = remote;
+        try { localStorage.setItem(DB_KEY, JSON.stringify(remote)); } catch(e) {}
       }
-      // Persist the merged state both ways
-      try { localStorage.setItem(DB_KEY, JSON.stringify(merged)); } catch(e) {}
-      window._fb.saveDb(merged);
-      // Refresh title-screen welcome message + open scoreboard if applicable
-      try {
-        if (typeof refreshWelcome === 'function') refreshWelcome();
-        const sb = document.getElementById('scoreboardScreen');
-        if (sb && !sb.classList.contains('hidden')) renderScoreboard();
-      } catch(e) {}
-    });
+    } catch (e) {
+      console.warn('[scoreboard] fetch failed:', e && e.message);
+      return false;
+    } finally {
+      _fetching = false;
+    }
+    // Refresh any UI piece that's reading the data
+    try {
+      if (typeof refreshWelcome === 'function') refreshWelcome();
+      const sb = document.getElementById('scoreboardScreen');
+      if (sb && !sb.classList.contains('hidden') && typeof renderScoreboard === 'function') {
+        renderScoreboard();
+      }
+    } catch(e) {}
+    return true;
   }
-  if (window._fb) pullFromFirebase();
-  else window.addEventListener('firebaseReady', pullFromFirebase, { once: true });
+  if (window._fb) fetchFromServer();
+  else window.addEventListener('firebaseReady', fetchFromServer, { once: true });
   function escapeHtml(s) {
     return String(s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -2782,6 +2780,7 @@
     game.currentUser = null;
     const ti = document.getElementById('titleScreen');
     ti.classList.remove('hidden'); ti.classList.add('active');
+    fetchFromServer();           // pull fresh data so the next player sees up-to-date records
     refreshWelcome();
     setTimeout(() => { nameInputEl.focus(); nameInputEl.select(); }, 30);
   });
@@ -2803,8 +2802,8 @@
     }).join('');
   }
   function showScoreboard() {
-    // Pull fresh data from Firebase first; the pull's callback will re-render once complete
-    pullFromFirebase();
+    // Pull fresh data from the server first; the fetch will re-render the list when it lands
+    fetchFromServer();
     renderScoreboard();
     document.getElementById('titleScreen').classList.add('hidden');
     document.getElementById('titleScreen').classList.remove('active');
