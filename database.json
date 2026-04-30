@@ -1,0 +1,70 @@
+{
+  "_note": "Live game data is mirrored from browser localStorage (key 'pluckDb'). To reset all scores, clear localStorage.",
+  "lastUpdated": "2026-04-30T00:45:24.689Z",
+  "users": {
+    "Chris": {
+      "scores": [
+        4,
+        3,
+        4,
+        8,
+        6,
+        1,
+        3,
+        5,
+        11,
+        2,
+        25,
+        4,
+        6,
+        4,
+        1,
+        3,
+        3,
+        4,
+        6,
+        8,
+        8
+      ],
+      "bestScore": 25,
+      "plays": 21,
+      "firstPlayed": "2026-04-29T10:29:50.235Z",
+      "lastPlayed": "2026-04-30T00:45:24.689Z",
+      "lastDurationMs": 22091.499999999993,
+      "bestDurationMs": 44774.899999999994
+    },
+    "dsfg": {
+      "scores": [
+        9,
+        2
+      ],
+      "bestScore": 9,
+      "plays": 2,
+      "firstPlayed": "2026-04-29T11:08:22.792Z",
+      "lastPlayed": "2026-04-29T11:11:20.703Z"
+    },
+    "sfasf": {
+      "scores": [
+        1,
+        8,
+        0,
+        10,
+        7,
+        4,
+        3,
+        0,
+        6,
+        8,
+        10,
+        3,
+        6
+      ],
+      "bestScore": 10,
+      "plays": 13,
+      "firstPlayed": "2026-04-29T11:11:42.976Z",
+      "lastPlayed": "2026-04-29T11:14:21.445Z",
+      "lastDurationMs": 15425,
+      "bestDurationMs": 21550
+    }
+  }
+}

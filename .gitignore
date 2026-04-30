@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+.idea/
+
+# Local Claude state
+.claude/
+
+# Build / deploy outputs
+.vercel/
+.netlify/
+dist/
+build/

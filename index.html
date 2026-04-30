@@ -1,0 +1,2782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#87ceeb">
+<meta name="format-detection" content="telephone=no">
+<title>Pluck the Duck</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; touch-action: none; }
+  body {
+    font-family: 'Comic Sans MS', 'Trebuchet MS', system-ui, sans-serif;
+    background: #87ceeb;
+  }
+  #gameWrap { position: fixed; inset: 0; overflow: hidden; cursor: none; }
+  /* Show the system cursor whenever an overlay (with buttons) is up so the user can click */
+  .overlay.active, .overlay.active * { cursor: default; }
+  .btn { cursor: pointer !important; }
+  #soundToggle { cursor: pointer !important; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: none; color: #fff; text-align: center; padding: 20px;
+    text-shadow: 3px 3px 0 #5a3a00, -1px -1px 0 #5a3a00, 1px -1px 0 #5a3a00, -1px 1px 0 #5a3a00;
+  }
+  .overlay.active { pointer-events: auto; }
+  .overlay.gameover { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+
+  .title { font-size: clamp(40px, 9vw, 86px); color: #fff34d; margin-bottom: 8px; line-height: 1; }
+  .subtitle { font-size: clamp(15px, 2.6vw, 22px); margin-bottom: 28px; max-width: 560px; line-height: 1.4; }
+  .hint { font-size: clamp(13px, 2vw, 17px); margin-top: 22px; opacity: 0.9; max-width: 480px; }
+
+  .btn {
+    background: #ff8c00; color: #fff; border: 4px solid #5a3a00;
+    padding: 14px 38px; font-size: clamp(20px, 3vw, 28px); font-weight: bold;
+    border-radius: 50px; cursor: pointer; font-family: inherit;
+    box-shadow: 0 6px 0 #5a3a00; transition: transform .08s, box-shadow .08s;
+    text-shadow: 2px 2px 0 #5a3a00;
+  }
+  .btn:hover { transform: translateY(2px); box-shadow: 0 4px 0 #5a3a00; }
+  .btn:active { transform: translateY(6px); box-shadow: 0 0 0 #5a3a00; }
+
+  #scoreUI {
+    position: absolute;
+    top: calc(18px + env(safe-area-inset-top, 0px));
+    right: calc(22px + env(safe-area-inset-right, 0px));
+    text-align: right; pointer-events: none;
+    color: #fff; font-weight: bold;
+    text-shadow: 3px 3px 0 #5a3a00, -1px -1px 0 #5a3a00, 1px -1px 0 #5a3a00, -1px 1px 0 #5a3a00;
+  }
+  #scoreUI .big { font-size: clamp(28px, 5vw, 44px); line-height: 1; }
+  #scoreUI .label { font-size: 0.55em; opacity: .9; display: block; }
+  #scoreUI .high { font-size: clamp(14px, 2vw, 18px); color: #ffe066; margin-top: 4px; }
+  #scoreUI .time { font-size: clamp(14px, 2vw, 18px); color: #b6f08e; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  #soundToggle {
+    position: absolute;
+    top: calc(18px + env(safe-area-inset-top, 0px));
+    left: calc(18px + env(safe-area-inset-left, 0px));
+    background: rgba(255,255,255,0.85); border: 3px solid #5a3a00;
+    width: 46px; height: 46px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 22px; font-family: inherit;
+    box-shadow: 0 3px 0 #5a3a00;
+  }
+
+  .hidden { display: none !important; }
+  #newBest { color: #ffe066; font-weight: bold; }
+
+  /* Title screen — name input + button row */
+  #nameInput {
+    font-family: inherit; font-size: clamp(16px, 2.4vw, 22px);
+    padding: 12px 18px; border: 3px solid #5a3a00; border-radius: 30px;
+    margin-bottom: 8px; text-align: center;
+    background: rgba(255,255,255,0.96); color: #5a3a00;
+    outline: none; max-width: 320px; width: 80%; font-weight: bold;
+    text-shadow: none;
+  }
+  #nameInput:focus { box-shadow: 0 0 0 3px #ffe066; }
+  #welcomeMsg {
+    font-size: clamp(14px, 2vw, 18px); margin-bottom: 18px;
+    min-height: 1.4em; color: #fff34d;
+  }
+  #welcomeMsg.returning { color: #b6f08e; }
+  .titleBtnRow { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .titleBtnRow .btn { padding: 12px 28px; font-size: clamp(18px, 2.6vw, 24px); }
+  #scoreboardBtn { background: #5a9aff; }
+  #howToBtn { background: #9a5fff; }
+
+  /* How-to-play modal */
+  #howToScreen {
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+  }
+  #howToList {
+    background: rgba(0,0,0,0.45); padding: 18px 22px; border-radius: 14px;
+    border: 3px solid #5a3a00;
+    max-width: 600px; width: 92%; max-height: 60vh; overflow-y: auto;
+    margin-bottom: 22px; text-align: left;
+    font-family: 'Trebuchet MS', sans-serif;
+    font-size: clamp(13px, 1.8vw, 16px); line-height: 1.5;
+  }
+  .how-item {
+    display: flex; gap: 14px; margin-bottom: 14px;
+    align-items: flex-start;
+    border-bottom: 1px dashed rgba(255,255,255,0.18);
+    padding-bottom: 12px;
+  }
+  .how-item:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+  .how-icon {
+    font-size: 1.7em; flex-shrink: 0; width: 1.5em;
+    text-align: center; line-height: 1;
+  }
+  .how-text { flex: 1; }
+  .how-text b { display: block; color: #ffd84a; font-size: 1.08em; margin-bottom: 3px; text-shadow: 1px 1px 0 #5a3a00; }
+  .how-text p { margin: 0; color: #fff; text-shadow: 1px 1px 0 #5a3a00; }
+  .how-text p .hl { color: #b6f08e; font-weight: bold; }
+  .how-text p .danger { color: #ff8a8a; font-weight: bold; }
+
+  /* Scoreboard list */
+  #scoreboardScreen {
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+  }
+  #scoreboardList {
+    background: rgba(0,0,0,0.45); padding: 18px 24px; border-radius: 14px;
+    border: 3px solid #5a3a00;
+    font-family: 'Trebuchet MS', monospace; font-size: clamp(14px, 2vw, 18px);
+    max-width: 460px; width: 90%; line-height: 1.7;
+    margin-bottom: 22px; max-height: 50vh; overflow-y: auto;
+    text-align: left;
+  }
+  #scoreboardList .row {
+    display: grid; grid-template-columns: 2.5em 1fr auto auto; gap: 14px;
+    align-items: baseline; padding: 4px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.18);
+  }
+  #scoreboardList .row:last-child { border-bottom: none; }
+  #scoreboardList .rank { color: #ffd84a; text-align: right; font-weight: bold; }
+  #scoreboardList .name { color: #fff; overflow-wrap: anywhere; }
+  #scoreboardList .name.you { color: #b6f08e; }
+  #scoreboardList .best { color: #ffe066; font-weight: bold; }
+  #scoreboardList .plays { color: rgba(255,255,255,0.55); font-size: 0.85em; }
+  #scoreboardList .empty { font-style: italic; opacity: 0.85; text-align: center; padding: 12px 0; }
+
+  /* Storm badge — appears during stormy weather */
+  #stormBadge {
+    position: absolute;
+    top: calc(70px + env(safe-area-inset-top, 0px));
+    left: 50%; transform: translateX(-50%);
+    background: linear-gradient(180deg, #5570a8 0%, #2e3f6c 100%);
+    color: #fff; padding: 8px 18px; border-radius: 24px;
+    border: 3px solid #1a2548; font-family: inherit; font-weight: bold;
+    font-size: clamp(14px, 2.2vw, 20px); box-shadow: 0 3px 0 #1a2548;
+    pointer-events: none; text-shadow: 2px 2px 0 #1a2548;
+    opacity: 0; transition: opacity 0.4s ease; white-space: nowrap;
+  }
+  #stormBadge.visible { opacity: 1; }
+
+  @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  .pop { animation: pop .35s ease-out; }
+
+  /* ----- Mobile / touch tweaks ----- */
+  /* Coarse pointer (touch) — bigger sound toggle and minimum button height for easier tapping */
+  @media (pointer: coarse) {
+    #soundToggle { width: 52px; height: 52px; font-size: 24px; }
+    .btn { min-height: 48px; }
+    #nameInput { font-size: 18px; padding: 14px 18px; }
+  }
+  /* Narrow screens (most phones in portrait) — slightly tighter title screen */
+  @media (max-width: 480px) {
+    .title { font-size: clamp(34px, 9vw, 60px); }
+    .titleBtnRow { gap: 10px; }
+    .titleBtnRow .btn { padding: 11px 18px; font-size: clamp(15px, 3.5vw, 18px); }
+    #howToList, #scoreboardList { padding: 14px 14px; max-height: 55vh; }
+    .how-item { gap: 10px; }
+    .how-icon { font-size: 1.4em; }
+  }
+  /* Short viewports (phone in landscape) — keep overlays scrollable and content compact */
+  @media (max-height: 480px) {
+    .title { font-size: clamp(28px, 7vh, 48px); margin-bottom: 4px; }
+    .subtitle { font-size: clamp(13px, 3vh, 18px); margin-bottom: 12px; }
+    #welcomeMsg { margin-bottom: 8px; }
+    #howToList { max-height: 45vh; }
+    #scoreboardList { max-height: 45vh; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="game"></canvas>
+
+  <div id="scoreUI" class="hidden">
+    <span class="label">Feathers</span>
+    <div class="big"><span id="score">0</span></div>
+    <div class="high">Best: <span id="hiscore">0</span></div>
+    <div class="time">⏱ <span id="timer">0:00</span></div>
+  </div>
+  <button id="soundToggle" class="hidden" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+  <div id="stormBadge">🌧️ STORM × 2</div>
+
+  <div id="titleScreen" class="overlay active">
+    <div class="title pop">🐤 Pluck the Duck</div>
+    <div class="subtitle">Sneak feathers off the duck — but stop clicking the moment it turns around, or you'll get bit!</div>
+    <input type="text" id="nameInput" placeholder="Enter your name" maxlength="20" autocomplete="off" spellcheck="false" />
+    <div id="welcomeMsg">&nbsp;</div>
+    <div class="titleBtnRow">
+      <button class="btn" id="startBtn">Start</button>
+      <button class="btn" id="howToBtn">❓ How to Play</button>
+      <button class="btn" id="scoreboardBtn">🏆 Scoreboard</button>
+    </div>
+    <div class="hint">🖱️ Click / tap near the duck to pluck. Watch the head!</div>
+  </div>
+
+  <div id="scoreboardScreen" class="overlay hidden">
+    <div class="title pop" style="color:#ffd84a;">🏆 Scoreboard</div>
+    <div id="scoreboardList"></div>
+    <button class="btn" id="scoreboardBackBtn">Back</button>
+  </div>
+
+  <div id="howToScreen" class="overlay hidden">
+    <div class="title pop" style="color:#9ed1ff;">How to Play</div>
+    <div id="howToList">
+      <div class="how-item">
+        <span class="how-icon">🐤</span>
+        <div class="how-text">
+          <b>Pluck Feathers</b>
+          <p>Click or tap on or near the duck to yank a white feather. Each one is worth <span class="hl">+1 point</span>. There's a short cooldown between plucks.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">⚠️</span>
+        <div class="how-text">
+          <b>Watch the Head!</b>
+          <p>Sometimes the duck swivels its head around to look back at you (a red <span class="danger">!</span> appears). <span class="danger">Stop clicking immediately</span> — any reach toward the duck while it's watching gets you bit, and the run ends.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">😡</span>
+        <div class="how-text">
+          <b>Suspicious vs. Angry</b>
+          <p>The duck escalates: first it just <i>watches</i> (suspicious), then if it's still angry it gets <span class="danger">red eyes + steam puffs</span>. Sometimes it fakes you out and turns back without attacking. The higher your score, the less it fakes.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">📊</span>
+        <div class="how-text">
+          <b>Danger Meter</b>
+          <p>The bar at the top fills as you pluck rapidly. Past the white tick (50%) every additional pluck rolls a <span class="danger">snap-bite</span> chance — the duck whips around without warning. Slow down to let it cool back to green.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">🌽</span>
+        <div class="how-text">
+          <b>Eating Time</b>
+          <p>The duck sometimes stops to peck at the ground for a few seconds. You can still pluck, but if it spooks while eating it's <span class="danger">60% likely to skip the warning</span> and snap straight to angry.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">⭐</span>
+        <div class="how-text">
+          <b>Golden Feather</b>
+          <p>Every pluck has a <span class="hl">2% chance</span> of being golden — sparkles burst, score <span class="hl">doubles</span>, and the world freezes for a celebration popup. After you continue, the duck gets noticeably <span class="danger">angrier and faster</span>. Each golden stacks the difficulty.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">🌙</span>
+        <div class="how-text">
+          <b>Day &amp; Night</b>
+          <p>A full cycle takes <span class="hl">5 minutes</span>: the sun arcs across the sky, the moon rises, stars fade in. At night the duck gets <span class="hl">sleepy</span>: slower walking, longer reactions, more fake-outs, and roughly <span class="hl">30% less likely</span> to skip-to-angry.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">🌧️</span>
+        <div class="how-text">
+          <b>Storm × 2</b>
+          <p>Random storms roll in (rain, wind, lightning, thunder). When the <b>STORM × 2</b> badge is up, every pluck removes <span class="hl">two feathers</span> and gives you <span class="hl">+2 score</span>. Storms last 12–30 s.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">🪨</span>
+        <div class="how-text">
+          <b>Rolling Rocks</b>
+          <p>The duck wanders the ground freely. When it bumps into a rock, the rock rolls out of the way with momentum — purely cosmetic but cute.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">⏱️</span>
+        <div class="how-text">
+          <b>Timer</b>
+          <p>Tracks how long the current run has lasted. Pauses during the golden popup. Your best survival time is shown on the title screen when you re-enter your name.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">🏆</span>
+        <div class="how-text">
+          <b>Scoreboard &amp; Users</b>
+          <p>Every player has their own record. Type your name on the title screen — returning players see their best score and time. The <b>Scoreboard</b> ranks all players by best score. After a bite, hit <b>Change User</b> to switch.</p>
+        </div>
+      </div>
+      <div class="how-item">
+        <span class="how-icon">🔊</span>
+        <div class="how-text">
+          <b>Audio</b>
+          <p>Click the speaker icon top-left to mute / unmute. Sounds: pluck pop, alert, angry quack, bite, thunder rumble.</p>
+        </div>
+      </div>
+    </div>
+    <button class="btn" id="howToBackBtn">Got it!</button>
+  </div>
+
+  <div id="overScreen" class="overlay gameover hidden">
+    <div class="title pop" style="color:#ff6b6b;">Got Bit! 💢</div>
+    <div class="subtitle">
+      You plucked <span id="finalScore">0</span> feathers in <span id="finalTime">0:00</span>.
+      <br><span id="newBest" class="hidden">🏆 New best!</span>
+    </div>
+    <div class="titleBtnRow">
+      <button class="btn" id="restartBtn">Try Again</button>
+      <button class="btn" id="changeUserBtn" style="background:#5a9aff;">👤 Change User</button>
+    </div>
+  </div>
+
+  <div id="goldenScreen" class="overlay hidden" style="background:radial-gradient(ellipse at center, rgba(120,80,0,0.55) 0%, rgba(0,0,0,0.55) 70%); backdrop-filter: blur(2px);">
+    <div class="title pop" style="color:#ffd84a;">⭐ GOLDEN FEATHER! ⭐</div>
+    <div class="subtitle">
+      Score doubled: <span id="goldenOldScore">0</span> → <span style="color:#ffd84a;" id="goldenNewScore">0</span><br>
+      <span style="color:#ff8a8a;">⚠ The duck is furious now…</span>
+    </div>
+    <button class="btn" id="goldenContinueBtn" style="background:#ffd84a; color:#5a3a00; text-shadow:none; border-color:#5a3a00;">Keep Going!</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- canvas + sizing ----------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    layout();
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- audio ----------
+  let audioCtx = null;
+  let soundOn = true;
+  function ac() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  // Preloaded sound files (cloned per play so rapid plucks can overlap)
+  const audioFiles = {
+    pluck: 'plucking.wav',
+    angry: 'duck-angry.mp3',
+    lose:  'lose.wav',
+  };
+  const audioPool = {};
+  for (const [name, src] of Object.entries(audioFiles)) {
+    const a = new Audio(src);
+    a.preload = 'auto';
+    audioPool[name] = a;
+  }
+  function playFile(name, volume = 0.7) {
+    if (!soundOn) return null;
+    const base = audioPool[name];
+    if (!base) return null;
+    const a = base.cloneNode();
+    a.volume = volume;
+    a.play().catch(() => {});
+    return a;
+  }
+
+  // iOS / mobile audio unlock: every <audio> element needs a user-gesture .play() before any
+  // cloneNode().play() will work. Prime them once on the first user input anywhere on the page.
+  let audioUnlocked = false;
+  function unlockAudio() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    ac();
+    try {
+      if (audioCtx) {
+        const buf = audioCtx.createBuffer(1, 1, 22050);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start(0);
+      }
+    } catch(e) {}
+    for (const k in audioPool) {
+      const a = audioPool[k];
+      const wasMuted = a.muted;
+      a.muted = true;
+      const p = a.play();
+      if (p && p.then) {
+        p.then(() => { a.pause(); a.currentTime = 0; a.muted = wasMuted; })
+         .catch(() => { a.muted = wasMuted; });
+      } else {
+        a.muted = wasMuted;
+      }
+    }
+  }
+  const _unlockAudioOnce = () => {
+    unlockAudio();
+    window.removeEventListener('touchstart', _unlockAudioOnce);
+    window.removeEventListener('mousedown', _unlockAudioOnce);
+    window.removeEventListener('keydown', _unlockAudioOnce);
+  };
+  window.addEventListener('touchstart', _unlockAudioOnce, { passive: true });
+  window.addEventListener('mousedown', _unlockAudioOnce);
+  window.addEventListener('keydown', _unlockAudioOnce);
+
+  let angrySoundInstance = null;
+  function stopAngrySound() {
+    if (angrySoundInstance) {
+      try { angrySoundInstance.pause(); angrySoundInstance.currentTime = 0; } catch(e) {}
+      angrySoundInstance = null;
+    }
+  }
+
+  function blip(opts) {
+    if (!soundOn) return;
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = opts.type || 'square';
+    o.frequency.setValueAtTime(opts.f0, t);
+    if (opts.f1 != null) {
+      if (opts.curve === 'exp') o.frequency.exponentialRampToValueAtTime(Math.max(1, opts.f1), t + opts.dur);
+      else o.frequency.linearRampToValueAtTime(opts.f1, t + opts.dur);
+    }
+    const vol = opts.vol || 0.2;
+    // Short attack to avoid click, then exponential decay
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + opts.dur + 0.02);
+    o.connect(g).connect(c.destination);
+    o.start(t);
+    o.stop(t + opts.dur + 0.05);
+  }
+  const SFX = {
+    pluck() { playFile('pluck', 0.7); },
+    alert() { blip({ type:'sawtooth', f0: 320, f1: 880, dur: 0.28, vol: 0.22 }); },
+    bite()  { playFile('lose', 0.8); },
+    angry() {
+      stopAngrySound();
+      angrySoundInstance = playFile('angry', 0.8);
+    },
+  };
+
+  // ---------- game state ----------
+  const STATE = { TITLE:'title', PLAYING:'playing', OVER:'over' };
+  const DSTATE = { IDLE:'idle', EATING:'eating', SUSPICIOUS:'suspicious', ANGRY:'angry', ATTACK:'attack' };
+
+  // Chance the duck snaps straight to ANGRY (skipping the suspicious warning).
+  // Both ramp up with score so high-scoring players get less mercy.
+  // At night the duck is sleepy: ~30% less likely to get angry, more fake-outs, slower reactions
+  const NIGHT_ANGER_MUL = 0.7;        // angry chance × this
+  const NIGHT_REACTION_MUL = 1.5;     // reaction timer × this (slower)
+  const NIGHT_FAKEOUT_BONUS = 0.18;   // added to fake-out chance, capped
+
+  function idleSkipToAngryChance() {
+    let c = game.score * 0.006 + game.goldenBoost * 0.15;
+    if (isNight()) c *= NIGHT_ANGER_MUL;
+    return Math.min(0.9, c);
+  }
+  function eatingSkipToAngryChance() {
+    let c = 0.6 + game.score * 0.004 + game.goldenBoost * 0.1;
+    if (isNight()) c *= NIGHT_ANGER_MUL;
+    return Math.min(0.95, c);
+  }
+
+  // ---------- user database (persisted to localStorage; database.json provides initial seed) ----------
+  const DB_KEY = 'pluckDb';
+  function loadDb() {
+    try {
+      const s = localStorage.getItem(DB_KEY);
+      if (s) return JSON.parse(s);
+    } catch(e) {}
+    return { users: {} };
+  }
+  function saveDb(db) {
+    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+    syncToServer(db);
+  }
+  // POST the live database to the optional Node helper (server.js). Silently no-ops if the
+  // server isn't running or the page is opened via file://.
+  let _lastSyncJson = null;
+  function syncToServer(db) {
+    try {
+      const payload = {
+        _note: "Live game data is mirrored from browser localStorage (key 'pluckDb'). To reset all scores, clear localStorage.",
+        lastUpdated: new Date().toISOString(),
+        users: db.users || {},
+      };
+      const body = JSON.stringify(payload);
+      // Cheap dedupe — skip the network call if nothing actually changed
+      if (body === _lastSyncJson) return;
+      _lastSyncJson = body;
+      fetch('/api/save-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        // keepalive lets the request survive page-unload (e.g. a tab close right after a bite)
+        keepalive: true,
+      }).catch(() => {});
+    } catch(e) {}
+  }
+  function normalizeName(raw) { return (raw || '').trim().slice(0, 20); }
+  function getUser(name) { return loadDb().users[name]; }
+  function recordPlay(name, score, durationMs) {
+    const db = loadDb();
+    const now = new Date().toISOString();
+    if (!db.users[name]) {
+      db.users[name] = { scores: [], bestScore: 0, plays: 0, firstPlayed: now, lastPlayed: now };
+    }
+    const u = db.users[name];
+    u.scores.push(score);
+    if (u.scores.length > 50) u.scores = u.scores.slice(-50); // keep last 50
+    u.plays = (u.plays || 0) + 1;
+    if (score > u.bestScore) u.bestScore = score;
+    u.lastPlayed = now;
+    if (durationMs != null) {
+      u.lastDurationMs = durationMs;
+      if (!u.bestDurationMs || durationMs > u.bestDurationMs) u.bestDurationMs = durationMs;
+    }
+    saveDb(db);
+    return u;
+  }
+  function getLeaderboard(limit = 20) {
+    const db = loadDb();
+    const arr = Object.entries(db.users).map(([name, data]) => ({ name, ...data }));
+    arr.sort((a, b) => b.bestScore - a.bestScore || (b.plays || 0) - (a.plays || 0));
+    return arr.slice(0, limit);
+  }
+  // First-run seed: try to fetch database.json (works on http://, often blocked on file://).
+  // If it loads and localStorage is empty, copy the users into localStorage.
+  (function seedFromJson() {
+    if (localStorage.getItem(DB_KEY)) return; // already have live data
+    fetch('database.json').then(r => r.ok ? r.json() : null).then(j => {
+      if (!j || !j.users) return;
+      if (localStorage.getItem(DB_KEY)) return;
+      saveDb({ users: j.users });
+    }).catch(() => {});
+  })();
+  function escapeHtml(s) {
+    return String(s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function formatTime(ms) {
+    const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  const game = {
+    state: STATE.TITLE,
+    score: 0,
+    hiscore: parseInt(localStorage.getItem('pluckHi') || '0', 10),
+    currentUser: null,
+    shake: 0,
+    flash: 0,
+    timeMs: 0,
+    tension: 0,    // 0..1 — rapid-pluck risk; rises per pluck, decays over time
+    paused: false, // freeze duck/timers (used while a popup is showing)
+    goldenBoost: 0, // count of golden feathers collected; permanent anger multiplier
+    elapsedMs: 0,  // game timer — accumulates while STATE.PLAYING and !paused
+  };
+
+  const GOLDEN_CHANCE = 0.02;
+
+  // Danger from rapid plucking
+  const TENSION_PER_PLUCK = 0.16;       // each pluck adds this
+  const TENSION_DECAY     = 0.55;       // per second when not plucking
+  const TENSION_SAFE      = 0.5;        // below this: zero bite risk
+  const TENSION_BITE_GAIN = 1.9;        // bite chance = (tension - safe) * gain
+
+  const duck = {
+    x: 0, y: 0, size: 1,
+    state: DSTATE.IDLE,
+    look: 0,            // 0 = facing left (idle), 1 = facing right (player)
+    lookTarget: 0,
+    breath: 0,
+    blinkT: 0,
+    nextBlink: 2,
+    reactionTimer: 0,
+    susTimer: 0,
+    angryTimer: 0,
+    attackTimer: 0,
+    attackLunge: 0,
+    isFakeout: false,
+    feathers: [],
+    bodyTilt: 0,
+    // Body orientation: +1 = visually facing left (default), -1 = visually facing right (mirrored)
+    facingDir: 1,
+    // Walking
+    walkTarget: null,   // {x,y} or null
+    walkPhase: 0,       // 0..1, leg-cycle phase
+    walkPauseTimer: 0,
+    walkSpeed: 0,
+    // Eating
+    eatTimer: 0,        // ms remaining in eating bout
+    eatPhase: 0,        // peck cycle counter
+    eatDip: 0,          // 0..1 smoothed head-down amount
+    // Brief mouth-open reaction synced to the pluck sound
+    reactionMouth: 0,
+    // Tail wiggle amplitude — snaps to 1 when a feather pops, decays back to 0
+    tailShake: 0,
+  };
+
+  const hand = {
+    x: 0, y: 0, tx: 0, ty: 0,
+    reach: 0,           // 0..1 how much hand is reaching forward (lunge)
+    reachTarget: 0,
+    pinch: 0,
+    biting: false,
+  };
+
+  const particles = [];
+
+  // ---------- layout ----------
+  function layout() {
+    duck.size = Math.min(W, H) * 0.18;
+    if (duck.x === 0 && duck.y === 0) {
+      duck.x = W * 0.42;
+      duck.y = H * 0.62;
+    }
+    // Clamp the duck inside the wander area on resize
+    const b = walkBounds();
+    duck.x = Math.max(b.minX, Math.min(b.maxX, duck.x));
+    duck.y = Math.max(b.minY, Math.min(b.maxY, duck.y));
+    if (duck.walkTarget) {
+      duck.walkTarget.x = Math.max(b.minX, Math.min(b.maxX, duck.walkTarget.x));
+      duck.walkTarget.y = Math.max(b.minY, Math.min(b.maxY, duck.walkTarget.y));
+    }
+  }
+
+  function walkBounds() {
+    return {
+      minX: W * 0.18,
+      maxX: W * 0.72,
+      minY: H * 0.55,
+      maxY: H * 0.78,
+    };
+  }
+  function pickWalkTarget() {
+    const b = walkBounds();
+    duck.walkTarget = {
+      x: b.minX + Math.random() * (b.maxX - b.minX),
+      y: b.minY + Math.random() * (b.maxY - b.minY),
+    };
+    // Face the direction we're about to walk
+    const dx = duck.walkTarget.x - duck.x;
+    if (Math.abs(dx) > 5) duck.facingDir = dx < 0 ? 1 : -1;
+  }
+
+  function initFeathers() {
+    duck.feathers.length = 0;
+    const s = duck.size;
+    const count = 24;
+    let attempts = 0;
+    while (duck.feathers.length < count && attempts < count * 40) {
+      attempts++;
+      // Bias toward back/rump (positive ox) and lower body (positive oy)
+      const ox = (Math.random() * 1.6 - 0.4) * s;
+      const oy = (Math.random() * 1.0 - 0.3) * s * 0.6;
+      const inside = (ox*ox)/(s*0.9*s*0.9) + (oy*oy)/(s*0.55*s*0.55) < 0.85;
+      if (!inside) continue;
+      // Skip the area covered by Donald's sailor shirt (upper-front of body)
+      const inShirt = oy < s * 0.02 && ox < s * 0.55;
+      if (inShirt) continue;
+      duck.feathers.push({
+        ox, oy,
+        angle: Math.random() * Math.PI * 2,
+        size: s * (0.06 + Math.random() * 0.05),
+        color: '#ffffff',
+        plucked: false,
+      });
+    }
+  }
+
+  // ---------- input ----------
+  let pointerInside = true;
+  function setPointer(cx, cy) {
+    hand.tx = cx;
+    hand.ty = cy;
+  }
+  window.addEventListener('mousemove', e => setPointer(e.clientX, e.clientY));
+  window.addEventListener('mouseleave', () => { pointerInside = false; });
+  window.addEventListener('mouseenter', () => { pointerInside = true; });
+  window.addEventListener('touchmove', e => {
+    if (e.touches[0]) setPointer(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  window.addEventListener('touchstart', e => {
+    if (e.touches[0]) {
+      setPointer(e.touches[0].clientX, e.touches[0].clientY);
+      hand.x = hand.tx; hand.y = hand.ty;
+      tryPluck(hand.tx, hand.ty);
+    }
+  }, { passive: true });
+  window.addEventListener('mousedown', e => {
+    setPointer(e.clientX, e.clientY);
+    tryPluck(e.clientX, e.clientY);
+  });
+
+  // ---------- difficulty curves ----------
+  function reactionRange() {
+    const s = game.score;
+    let min = Math.max(380, 2000 - s * 35);
+    let max = Math.max(800, 4200 - s * 60);
+    // Each golden feather speeds the reaction up
+    const factor = 1 / (1 + game.goldenBoost * 0.25);
+    if (isNight()) { min *= NIGHT_REACTION_MUL; max *= NIGHT_REACTION_MUL; }
+    return [min * factor, max * factor];
+  }
+  function suspiciousWindow() {
+    const base = Math.max(420, 1300 - game.score * 22);
+    const win = base / (1 + game.goldenBoost * 0.2);
+    return isNight() ? win * 1.3 : win;     // longer window to react at night
+  }
+  function fakeoutChance() {
+    let base = Math.max(0.03, 0.5 - game.score * 0.018 - game.goldenBoost * 0.1);
+    if (isNight()) base = Math.min(0.85, base + NIGHT_FAKEOUT_BONUS);
+    return base;
+  }
+
+  function rollReactionTimer() {
+    const [a, b] = reactionRange();
+    duck.reactionTimer = a + Math.random() * (b - a);
+  }
+
+  // ---------- state transitions ----------
+  function setDuckIdle() {
+    stopAngrySound();
+    duck.state = DSTATE.IDLE;
+    duck.lookTarget = 0;
+    duck.walkTarget = null;
+    duck.walkPauseTimer = 0.5 + Math.random() * 0.7;
+    rollReactionTimer();
+  }
+  function setDuckEating() {
+    duck.state = DSTATE.EATING;
+    duck.lookTarget = 0;
+    duck.walkTarget = null;
+    duck.eatTimer = 1800 + Math.random() * 2800;  // 1.8 – 4.6 sec
+    duck.eatPhase = 0;
+    // Reaction timer keeps ticking, so the duck can still spook mid-meal
+  }
+  function setDuckSuspicious() {
+    duck.state = DSTATE.SUSPICIOUS;
+    duck.lookTarget = 1;
+    duck.susTimer = suspiciousWindow();
+    duck.isFakeout = Math.random() < fakeoutChance();
+    SFX.alert();
+  }
+  function setDuckAngry() {
+    duck.state = DSTATE.ANGRY;
+    duck.lookTarget = 1;
+    duck.angryTimer = 700 + Math.random() * 400;
+    SFX.angry();
+  }
+  function startAttack() {
+    stopAngrySound();
+    duck.state = DSTATE.ATTACK;
+    duck.lookTarget = 1;
+    duck.attackTimer = 520;
+    duck.attackLunge = 0;
+    hand.biting = true;
+    SFX.bite();
+    game.shake = 28;
+    game.flash = 1;
+  }
+
+  // ---------- pluck logic ----------
+  let lastPluck = 0;
+  const PLUCK_CD = 230;
+
+  function inReach(x, y) {
+    const dx = x - duck.x, dy = y - duck.y;
+    const dist = Math.hypot(dx, dy);
+    return dist < duck.size * 1.45;
+  }
+
+  function tryPluck(x, y) {
+    if (game.state !== STATE.PLAYING) return;
+    if (game.paused) return;
+    if (duck.state === DSTATE.ATTACK) return;
+    if (!inReach(x, y)) return;
+
+    // Reaching while duck is watching → BITE
+    if (duck.state === DSTATE.SUSPICIOUS || duck.state === DSTATE.ANGRY) {
+      startAttack();
+      return;
+    }
+
+    // Idle → successful pluck (with cooldown)
+    const now = performance.now();
+    if (now - lastPluck < PLUCK_CD) return;
+    lastPluck = now;
+
+    // Rapid-plucking risk: above the safety threshold, the duck may whip around and bite
+    // before reaching the suspicious state at all.
+    const biteChance = Math.max(0, game.tension - TENSION_SAFE) * TENSION_BITE_GAIN;
+    if (Math.random() < biteChance) {
+      // Snap-attack — skip suspicious entirely
+      duck.look = 1;
+      duck.lookTarget = 1;
+      startAttack();
+      return;
+    }
+    game.tension = Math.min(1, game.tension + TENSION_PER_PLUCK);
+
+    // Find closest live feather to click point
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < duck.feathers.length; i++) {
+      const f = duck.feathers[i];
+      if (f.plucked) continue;
+      const fx = duck.x + f.ox * duck.facingDir, fy = duck.y + f.oy;
+      const d = Math.hypot(fx - x, fy - y);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0) {
+      // Replenish for visual purposes (still scores)
+      initFeathers();
+      best = 0;
+    }
+    const f = duck.feathers[best];
+    f.plucked = true;
+
+    // 2% chance the plucked feather is golden — a celebratory popup, score doubles, more anger after
+    const isGolden = Math.random() < GOLDEN_CHANCE;
+    const fScreenX = duck.x + f.ox * duck.facingDir;
+    const fScreenY = duck.y + f.oy;
+    if (isGolden) {
+      spawnPluckParticles(fScreenX, fScreenY, '#ffd84a');
+      spawnGoldSparkles(fScreenX, fScreenY);
+    } else {
+      spawnPluckParticles(fScreenX, fScreenY, f.color);
+    }
+
+    game.score++;
+    document.getElementById('score').textContent = game.score;
+    SFX.pluck();
+    // Snap the duck's mouth open in sync with the pluck sound; it'll fade in update()
+    duck.reactionMouth = 1;
+    // Make the tail wiggle in shock from being plucked
+    duck.tailShake = 1;
+
+    // ---- Storm bonus: pluck a SECOND feather automatically (2× score per click) ----
+    if (isStorming() && !isGolden) {
+      let best2 = -1, bestD2 = Infinity;
+      for (let i = 0; i < duck.feathers.length; i++) {
+        const f2 = duck.feathers[i];
+        if (f2.plucked) continue;
+        const fx2 = duck.x + f2.ox * duck.facingDir;
+        const fy2 = duck.y + f2.oy;
+        const d = Math.hypot(fx2 - x, fy2 - y);
+        if (d < bestD2) { bestD2 = d; best2 = i; }
+      }
+      if (best2 < 0) { initFeathers(); best2 = 0; }
+      const f2 = duck.feathers[best2];
+      f2.plucked = true;
+      const fx2s = duck.x + f2.ox * duck.facingDir;
+      const fy2s = duck.y + f2.oy;
+      spawnPluckParticles(fx2s, fy2s, f2.color);
+      game.score++;
+      document.getElementById('score').textContent = game.score;
+    }
+
+    if (isGolden) {
+      // Freeze the world immediately so the duck can't sneak into anger during the sparkle delay
+      game.paused = true;
+      setTimeout(showGoldenPopup, 380);
+    }
+
+    // Hand lunges briefly
+    hand.reachTarget = 1;
+    setTimeout(() => { hand.reachTarget = 0; }, 110);
+
+    // Greedy plucking accelerates the duck's reaction
+    duck.reactionTimer -= 180 + Math.random() * 220;
+  }
+
+  // ---------- particles ----------
+  function spawnSleepyZ() {
+    particles.push({
+      kind: 'z',
+      x: duck.x + (Math.random() - 0.5) * duck.size * 0.3,
+      y: duck.y - duck.size * 1.4,
+      vx: (Math.random() - 0.3) * 18,    // slight rightward drift
+      vy: -28 - Math.random() * 12,
+      ax: 0, ay: 0,
+      rot: (Math.random() - 0.5) * 0.4,
+      vr: (Math.random() - 0.5) * 1.0,
+      size: duck.size * (0.18 + Math.random() * 0.10),
+      color: '#fff',
+      life: 2.6,
+      maxLife: 2.6,
+    });
+  }
+
+  function spawnPluckParticles(x, y, color) {
+    // Main feather particle
+    particles.push({
+      kind: 'feather',
+      x, y,
+      vx: (Math.random() - 0.3) * 200,
+      vy: -200 - Math.random() * 150,
+      ax: 0, ay: 380,
+      rot: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 8,
+      size: duck.size * 0.13,
+      color,
+      life: 1.4,
+      maxLife: 1.4,
+    });
+    // Small puff
+    for (let i = 0; i < 5; i++) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({
+        kind: 'puff',
+        x, y,
+        vx: Math.cos(a) * (60 + Math.random()*120),
+        vy: Math.sin(a) * (60 + Math.random()*120) - 60,
+        ax: 0, ay: 200,
+        size: duck.size * 0.04 * (0.6 + Math.random()*0.8),
+        color: '#fff',
+        life: 0.4 + Math.random()*0.3,
+        maxLife: 0.7,
+      });
+    }
+  }
+
+  function spawnGoldSparkles(x, y) {
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const speed = 100 + Math.random() * 280;
+      particles.push({
+        kind: 'sparkle',
+        x, y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed - 80,
+        ax: 0, ay: 220,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 12,
+        size: duck.size * (0.05 + Math.random() * 0.06),
+        color: ['#ffd84a','#ffe066','#fff5b8','#ffae00'][Math.floor(Math.random()*4)],
+        life: 0.8 + Math.random() * 0.5,
+        maxLife: 1.3,
+      });
+    }
+  }
+
+  function spawnBitePuffs() {
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({
+        kind: 'puff',
+        x: hand.x, y: hand.y,
+        vx: Math.cos(a) * (200 + Math.random()*200),
+        vy: Math.sin(a) * (200 + Math.random()*200),
+        ax: 0, ay: 200,
+        size: duck.size * 0.06,
+        color: ['#ff5252','#ffd84a','#fff'][Math.floor(Math.random()*3)],
+        life: 0.7,
+        maxLife: 0.7,
+      });
+    }
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    game.timeMs += dt * 1000;
+
+    // Drifting clouds + flying birds + rocks + weather (always animate)
+    updateWeather(dt);
+    updateClouds(dt);
+    updateBirds(dt);
+    updateRocks(dt);
+    updateRain(dt);
+    updateLightning(dt);
+    // Toggle storm UI badge visibility (only during gameplay)
+    const showStormBadge = weather.state === 'storming' && weather.intensity > 0.4 && game.state === STATE.PLAYING;
+    document.getElementById('stormBadge').classList.toggle('visible', showStormBadge);
+
+    // Sleepy 'z' particles drift up from the duck's head when calm at night
+    if (isNight() && (duck.state === DSTATE.IDLE || duck.state === DSTATE.EATING) && game.state === STATE.PLAYING) {
+      // Average ~1 spawn per ~1.4 sec
+      if (Math.random() < dt * 0.7) spawnSleepyZ();
+    }
+
+    // Smooth hand to target
+    hand.x += (hand.tx - hand.x) * Math.min(1, dt * 18);
+    hand.y += (hand.ty - hand.y) * Math.min(1, dt * 18);
+    hand.reach += (hand.reachTarget - hand.reach) * Math.min(1, dt * 22);
+
+    // Duck breathing/blinking
+    duck.breath += dt;
+    duck.blinkT -= dt;
+    if (duck.blinkT < 0) {
+      duck.blinkT = 0.12;
+      duck.nextBlink = 2 + Math.random() * 3;
+    }
+    duck.nextBlink -= dt;
+    if (duck.nextBlink < 0 && duck.blinkT < 0.001) {
+      duck.blinkT = 0.13;
+      duck.nextBlink = 2 + Math.random() * 3;
+    }
+
+    // Smooth head turn
+    duck.look += (duck.lookTarget - duck.look) * Math.min(1, dt * 12);
+
+    // Pluck-reaction mouth fades out (~250 ms — roughly the length of plucking.wav)
+    duck.reactionMouth = Math.max(0, duck.reactionMouth - dt * 4);
+    // Tail-shake decays a bit slower so the wiggle gets a few cycles in (~330 ms)
+    duck.tailShake = Math.max(0, duck.tailShake - dt * 3);
+
+    // Shake / flash decay
+    game.shake *= Math.pow(0.001, dt);
+    game.flash = Math.max(0, game.flash - dt * 1.5);
+
+    // Tension cools down + game timer ticks while actively playing
+    if (game.state === STATE.PLAYING && !game.paused) {
+      game.tension = Math.max(0, game.tension - TENSION_DECAY * dt);
+      game.elapsedMs += dt * 1000;
+      const timerEl = document.getElementById('timer');
+      const newText = formatTime(game.elapsedMs);
+      if (timerEl.textContent !== newText) timerEl.textContent = newText;
+    }
+
+    if (game.state === STATE.PLAYING && !game.paused) {
+      const ms = dt * 1000;
+
+      // ----- Wandering (only while idle) -----
+      const walking = duck.state === DSTATE.IDLE && duck.walkPauseTimer <= 0 && duck.walkTarget;
+      if (duck.state === DSTATE.IDLE) {
+        if (duck.walkPauseTimer > 0) {
+          duck.walkPauseTimer -= dt;
+        } else {
+          if (!duck.walkTarget) pickWalkTarget();
+          const dx = duck.walkTarget.x - duck.x;
+          const dy = duck.walkTarget.y - duck.y;
+          const d = Math.hypot(dx, dy);
+          if (d < 8) {
+            duck.walkTarget = null;
+            // After arriving: 40% chance to start eating, otherwise stand and wait
+            if (Math.random() < 0.4) setDuckEating();
+            else duck.walkPauseTimer = 0.6 + Math.random() * 1.6;
+          } else {
+            const speed = duck.size * (isNight() ? 0.25 : 0.50);   // exactly half-speed at night
+            duck.x += (dx / d) * speed * dt;
+            duck.y += (dy / d) * speed * dt;
+            duck.walkPhase = (duck.walkPhase + dt * (isNight() ? 1.25 : 2.5)) % 1;  // half step rate at night
+          }
+        }
+      } else {
+        // Not idle: stop walking, reset legs to neutral
+        duck.walkTarget = null;
+        duck.walkPhase += (0 - duck.walkPhase) * Math.min(1, dt * 8);
+      }
+      const walkTarget = walking ? 1 : 0;
+      duck.walkSpeed += (walkTarget - duck.walkSpeed) * Math.min(1, dt * 8);
+
+      // ----- Eating head-dip (peck cycle) -----
+      let dipTarget = 0;
+      if (duck.state === DSTATE.EATING) {
+        duck.eatPhase += dt * 1.6;             // ~1.6 pecks/sec
+        const peck = duck.eatPhase % 1;
+        if (peck < 0.4)      dipTarget = peck / 0.4;          // dip down
+        else if (peck < 0.7) dipTarget = 1;                   // hold at ground
+        else                 dipTarget = (1 - peck) / 0.3;    // come back up
+      }
+      // Snap up quickly when leaving the eating state, smooth otherwise
+      const dipSpeed = duck.state === DSTATE.EATING ? 8 : 22;
+      duck.eatDip += (dipTarget - duck.eatDip) * Math.min(1, dt * dipSpeed);
+
+      if (duck.state === DSTATE.IDLE) {
+        duck.reactionTimer -= ms;
+        if (duck.reactionTimer <= 0) {
+          // Higher score => the duck increasingly skips the warning and snaps straight to angry.
+          if (Math.random() < idleSkipToAngryChance()) setDuckAngry();
+          else setDuckSuspicious();
+        }
+      } else if (duck.state === DSTATE.EATING) {
+        duck.reactionTimer -= ms;
+        duck.eatTimer -= ms;
+        if (duck.reactionTimer <= 0) {
+          if (Math.random() < eatingSkipToAngryChance()) setDuckAngry();
+          else setDuckSuspicious();
+        } else if (duck.eatTimer <= 0) {
+          setDuckIdle();
+        }
+      } else if (duck.state === DSTATE.SUSPICIOUS) {
+        duck.susTimer -= ms;
+        if (duck.susTimer <= 0) {
+          if (duck.isFakeout) {
+            setDuckIdle();
+          } else {
+            setDuckAngry();
+          }
+        }
+      } else if (duck.state === DSTATE.ANGRY) {
+        duck.angryTimer -= ms;
+        if (duck.angryTimer <= 0) setDuckIdle();
+      } else if (duck.state === DSTATE.ATTACK) {
+        duck.attackTimer -= ms;
+        // Lunge curve: 0..1..0
+        const t = 1 - duck.attackTimer / 520;
+        duck.attackLunge = Math.sin(Math.min(1, t) * Math.PI);
+        if (duck.attackTimer <= 360 && hand.biting) {
+          spawnBitePuffs();
+          hand.biting = false;
+        }
+        if (duck.attackTimer <= 0) {
+          endGame();
+        }
+      }
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx += (p.ax || 0) * dt;
+      p.vy += (p.ay || 0) * dt;
+      if (p.kind === 'feather' || p.kind === 'sparkle' || p.kind === 'z') p.rot += p.vr * dt;
+      p.life -= dt;
+      if (p.life <= 0 || p.y > H + 80) particles.splice(i, 1);
+    }
+  }
+
+  // ---------- drifting clouds ----------
+  // Each cloud stores normalized coords (0..1 across W/H). x is advanced every frame and wraps.
+  const CLOUDS = [
+    { x: 0.10, y: 0.18, r: 0.060, speed: 0.022 },
+    { x: 0.30, y: 0.10, r: 0.050, speed: 0.016 },
+    { x: 0.52, y: 0.22, r: 0.045, speed: 0.028 },
+    { x: 0.72, y: 0.13, r: 0.072, speed: 0.014 },
+    { x: 0.40, y: 0.28, r: 0.040, speed: 0.034 },
+    { x: 0.88, y: 0.20, r: 0.054, speed: 0.020 },
+  ];
+  function updateClouds(dt) {
+    const windMul = 1 + weather.intensity * 3;     // clouds race during storms
+    for (const c of CLOUDS) {
+      c.x += c.speed * windMul * dt;
+      if (c.x > 1.15) c.x -= 1.30; // wrap with a margin so they fade in/out off-screen
+    }
+  }
+
+  // ---------- birds ----------
+  // Each bird stores normalized coords. They cross the sky at random heights and re-spawn
+  // off-screen with new randomized parameters when they exit.
+  const BIRDS = [];
+  function spawnBird(initial = false) {
+    return {
+      x: initial ? Math.random() : -0.08,
+      y: 0.05 + Math.random() * 0.30,
+      dir: Math.random() < 0.7 ? 1 : -1,         // most fly right, some fly left
+      speed: 0.06 + Math.random() * 0.10,        // 6-16 % screen-width per sec
+      size: 0.016 + Math.random() * 0.018,       // small
+      flapPhase: Math.random() * Math.PI * 2,
+      flapSpeed: 7 + Math.random() * 5,
+      bobAmp: 0.005 + Math.random() * 0.012,     // gentle vertical bob amplitude
+      bobBaseY: 0,
+    };
+  }
+  for (let i = 0; i < 5; i++) {
+    const b = spawnBird(true);
+    b.bobBaseY = b.y;
+    BIRDS.push(b);
+  }
+
+  // ---------- day / night cycle ----------
+  // 5-minute full cycle. dayProgress 0..1: 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight.
+  const DAY_CYCLE_MS = 5 * 60 * 1000;
+  function getDayProgress() { return (game.timeMs % DAY_CYCLE_MS) / DAY_CYCLE_MS; }
+  function getDaylight() {
+    // 1 at noon, 0 at midnight, smooth in between
+    return (Math.cos((getDayProgress() - 0.25) * Math.PI * 2) + 1) / 2;
+  }
+  function isNight() { return getDaylight() < 0.35; }
+  function getSunPos() {
+    const dp = getDayProgress();
+    if (dp >= 0.5) return null;          // day half is dp ∈ [0, 0.5]
+    const t = dp * 2;                    // 0 = sunrise, 1 = sunset
+    return {
+      x: t * W * 0.9 + W * 0.05,
+      y: H * 0.55 - Math.sin(t * Math.PI) * H * 0.45,
+      t,
+    };
+  }
+  function getMoonPos() {
+    const dp = getDayProgress();
+    if (dp < 0.5) return null;           // night half is dp ∈ [0.5, 1)
+    const t = (dp - 0.5) * 2;
+    return {
+      x: t * W * 0.9 + W * 0.05,
+      y: H * 0.55 - Math.sin(t * Math.PI) * H * 0.45,
+      t,
+    };
+  }
+
+  // Color lerp helpers
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+  function lerpColor(hex1, hex2, t) {
+    const [r1, g1, b1] = hexToRgb(hex1);
+    const [r2, g2, b2] = hexToRgb(hex2);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  }
+
+  // Stars (positions pre-generated, twinkling)
+  const STARS = [];
+  for (let i = 0; i < 50; i++) {
+    STARS.push({
+      x: Math.random(),
+      y: Math.random() * 0.55,
+      size: 0.5 + Math.random() * 1.4,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+  function drawStars() {
+    const dl = getDaylight();
+    const visibility = Math.max(0, 1 - dl * 1.6);   // fades out as it gets brighter
+    if (visibility < 0.04) return;
+    const t = game.timeMs * 0.001;
+    for (const s of STARS) {
+      const twinkle = 0.55 + 0.45 * Math.sin(t * 2.2 + s.phase);
+      ctx.fillStyle = `rgba(255,255,240,${visibility * twinkle})`;
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y * H, s.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawSun() {
+    const p = getSunPos();
+    if (!p) return;
+    const r = H * 0.045;
+    // Hazy glow
+    const grad = ctx.createRadialGradient(p.x, p.y, r * 0.5, p.x, p.y, r * 4);
+    grad.addColorStop(0, 'rgba(255, 240, 120, 0.55)');
+    grad.addColorStop(0.4, 'rgba(255, 220, 80, 0.22)');
+    grad.addColorStop(1, 'rgba(255, 200, 50, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 4, 0, Math.PI * 2);
+    ctx.fill();
+    // Body
+    ctx.fillStyle = '#fff5a3';
+    ctx.strokeStyle = '#ffb850';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  }
+  function drawMoon() {
+    const p = getMoonPos();
+    if (!p) return;
+    const r = H * 0.04;
+    // Soft glow
+    const grad = ctx.createRadialGradient(p.x, p.y, r * 0.5, p.x, p.y, r * 3);
+    grad.addColorStop(0, 'rgba(230, 240, 255, 0.4)');
+    grad.addColorStop(1, 'rgba(230, 240, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Body
+    ctx.fillStyle = '#eef0ff';
+    ctx.strokeStyle = '#9ca8c4';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // Couple of craters for character
+    ctx.fillStyle = 'rgba(120,130,160,0.30)';
+    ctx.beginPath();
+    ctx.arc(p.x - r * 0.30, p.y - r * 0.20, r * 0.20, 0, Math.PI * 2);
+    ctx.arc(p.x + r * 0.20, p.y + r * 0.25, r * 0.13, 0, Math.PI * 2);
+    ctx.arc(p.x - r * 0.05, p.y + r * 0.40, r * 0.10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ---------- ground props (rocks + grass tufts) ----------
+  // Rocks: stored as fractional base position + a runtime pixel offset/velocity for rolling.
+  const ROCKS = (() => {
+    const defs = [
+      { fx: 0.07, fy: 0.78, size: 0.018, color: '#8a8a8a' },
+      { fx: 0.16, fy: 0.83, size: 0.025, color: '#9c9c9c' },
+      { fx: 0.31, fy: 0.74, size: 0.020, color: '#7d7d7d' },
+      { fx: 0.42, fy: 0.86, size: 0.030, color: '#aaaaaa' },
+      { fx: 0.55, fy: 0.78, size: 0.022, color: '#8a8a8a' },
+      { fx: 0.66, fy: 0.92, size: 0.034, color: '#9c9c9c' },
+      { fx: 0.79, fy: 0.80, size: 0.020, color: '#777777' },
+      { fx: 0.88, fy: 0.88, size: 0.028, color: '#9c9c9c' },
+      { fx: 0.24, fy: 0.93, size: 0.024, color: '#888888' },
+      { fx: 0.50, fy: 0.96, size: 0.030, color: '#a0a0a0' },
+    ];
+    return defs.map(d => ({
+      ...d, offX: 0, offY: 0, vx: 0, vy: 0, rot: Math.random() * Math.PI, vrot: 0,
+      // Pre-baked irregular silhouette (in unit coords) so each rock looks unique
+      shape: Array.from({ length: 9 }, (_, i) => {
+        const a = (i / 9) * Math.PI * 2;
+        return { a, r: 0.85 + Math.random() * 0.30 };
+      }),
+    }));
+  })();
+
+  function rockWorld(r) {
+    return { x: r.fx * W + r.offX, y: r.fy * H + r.offY, size: r.size * Math.min(W, H) };
+  }
+
+  function updateRocks(dt) {
+    for (const r of ROCKS) {
+      const w = rockWorld(r);
+      const dx = w.x - duck.x;
+      const dy = w.y - duck.y;
+      const dist = Math.hypot(dx, dy);
+      const collisionDist = duck.size * 0.55 + w.size * 1.2;
+      if (dist > 0.01 && dist < collisionDist) {
+        // Push away in proportion to overlap
+        const overlap = (collisionDist - dist) / collisionDist;
+        const dirX = dx / dist, dirY = dy / dist;
+        const force = 900 * overlap;
+        r.vx += dirX * force * dt;
+        r.vy += dirY * force * dt;
+      }
+      // Friction
+      const fac = Math.exp(-2.6 * dt);
+      r.vx *= fac; r.vy *= fac;
+      // Apply velocity
+      r.offX += r.vx * dt;
+      r.offY += r.vy * dt;
+      // Rolling rotation: rotation = horizontal travel / radius (the dominant axis reads as rolling)
+      const speed = Math.hypot(r.vx, r.vy);
+      if (speed > 1) r.rot += (r.vx / Math.max(1, w.size)) * dt;
+      // Soft bounds — keep rocks on the green ground area
+      if (w.x < w.size) { r.offX += (w.size - w.x); r.vx *= -0.3; }
+      if (w.x > W - w.size) { r.offX -= (w.x - (W - w.size)); r.vx *= -0.3; }
+      if (w.y < H * 0.62 + w.size) { r.offY += (H * 0.62 + w.size) - w.y; r.vy *= -0.3; }
+      if (w.y > H - w.size) { r.offY -= (w.y - (H - w.size)); r.vy *= -0.3; }
+    }
+  }
+
+  function drawRocks() {
+    const shadowAlpha = 0.06 + getDaylight() * 0.22;
+    for (const r of ROCKS) {
+      const w = rockWorld(r);
+      // Cast shadow on the ground first (slightly offset to suggest light from above-left)
+      ctx.fillStyle = `rgba(0, 10, 5, ${shadowAlpha})`;
+      ctx.beginPath();
+      ctx.ellipse(w.x + w.size * 0.25, w.y + w.size * 0.45, w.size * 1.35, w.size * 0.40, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      ctx.rotate(r.rot);
+      ctx.fillStyle = r.color;
+      ctx.strokeStyle = '#3a3a3a';
+      ctx.lineWidth = Math.max(1, w.size * 0.12);
+      ctx.beginPath();
+      for (let i = 0; i < r.shape.length; i++) {
+        const p = r.shape[i];
+        const px = Math.cos(p.a) * w.size * p.r;
+        const py = Math.sin(p.a) * w.size * p.r * 0.8;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Highlight on top-left
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      ctx.beginPath();
+      ctx.ellipse(-w.size * 0.25, -w.size * 0.30, w.size * 0.45, w.size * 0.20, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Static grass tufts (decorative clumps) — heights/phases pre-generated so they're stable
+  const GRASS_TUFTS = (() => {
+    const positions = [
+      { fx: 0.04, fy: 0.66 }, { fx: 0.13, fy: 0.71 }, { fx: 0.22, fy: 0.65 },
+      { fx: 0.36, fy: 0.69 }, { fx: 0.46, fy: 0.66 }, { fx: 0.58, fy: 0.71 },
+      { fx: 0.68, fy: 0.65 }, { fx: 0.81, fy: 0.69 }, { fx: 0.92, fy: 0.66 },
+      { fx: 0.10, fy: 0.88 }, { fx: 0.32, fy: 0.90 }, { fx: 0.55, fy: 0.88 },
+      { fx: 0.74, fy: 0.91 }, { fx: 0.93, fy: 0.89 },
+    ];
+    return positions.map(p => ({
+      fx: p.fx, fy: p.fy,
+      blades: Array.from({ length: 5 + Math.floor(Math.random() * 3) }, (_, i) => ({
+        offset: (i - 2) * 4 + (Math.random() - 0.5) * 3,
+        h: 18 + Math.random() * 14,
+        phase: Math.random() * Math.PI * 2,
+      })),
+    }));
+  })();
+
+  function drawGrassTufts() {
+    const t = game.timeMs * 0.001;
+    const shadowAlpha = 0.05 + getDaylight() * 0.18;
+    for (const tuft of GRASS_TUFTS) {
+      const cx = tuft.fx * W;
+      const cy = tuft.fy * H;
+      // Cast shadow under the tuft
+      ctx.fillStyle = `rgba(0, 10, 5, ${shadowAlpha})`;
+      ctx.beginPath();
+      ctx.ellipse(cx + 8, cy + 2, 22, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Blades
+      ctx.fillStyle = '#5aa83b';
+      ctx.strokeStyle = '#3d7a26';
+      ctx.lineWidth = 1;
+      for (const b of tuft.blades) {
+        const sway = Math.sin(t * 1.4 + b.phase) * 4;
+        const w = 5;
+        ctx.beginPath();
+        ctx.moveTo(cx + b.offset, cy);
+        ctx.lineTo(cx + b.offset + w / 2 + sway, cy - b.h);
+        ctx.lineTo(cx + b.offset + w, cy);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Atmospheric depth gradient on the green ground: warm haze near the horizon, darker band
+  // in the foreground, plus a side vignette so the corners don't compete with the duck.
+  function drawGroundDepth() {
+    const groundTop = H * 0.6;
+    // Vertical depth: warm haze at the horizon, neutral mid, darker close ground
+    const v = ctx.createLinearGradient(0, groundTop, 0, H);
+    v.addColorStop(0,    'rgba(255, 250, 200, 0.18)');   // distance haze
+    v.addColorStop(0.25, 'rgba(255, 250, 200, 0)');
+    v.addColorStop(0.55, 'rgba(0, 0, 0, 0)');
+    v.addColorStop(1,    'rgba(0, 30, 18, 0.40)');       // foreground shadow
+    ctx.fillStyle = v;
+    ctx.fillRect(0, groundTop, W, H - groundTop);
+    // Side vignette — slight darkening at the left/right edges of the ground
+    const sl = ctx.createLinearGradient(0, 0, W * 0.18, 0);
+    sl.addColorStop(0, 'rgba(0, 25, 15, 0.22)');
+    sl.addColorStop(1, 'rgba(0, 25, 15, 0)');
+    ctx.fillStyle = sl;
+    ctx.fillRect(0, groundTop, W * 0.18, H - groundTop);
+    const sr = ctx.createLinearGradient(W * 0.82, 0, W, 0);
+    sr.addColorStop(0, 'rgba(0, 25, 15, 0)');
+    sr.addColorStop(1, 'rgba(0, 25, 15, 0.22)');
+    ctx.fillStyle = sr;
+    ctx.fillRect(W * 0.82, groundTop, W * 0.18, H - groundTop);
+  }
+
+  // ---------- weather (random storms) ----------
+  // Smoothly ramps storm visuals up and down. While `state === 'storming'` and intensity > 0.5,
+  // each pluck removes 2 feathers (2× score) and the world is windier + rainier + dimmer.
+  const weather = {
+    state: 'clear',          // 'clear' | 'storming'
+    intensity: 0,            // 0..1 smoothed
+    targetIntensity: 0,
+    timer: 0,
+    nextChangeIn: 35,        // first storm check after ~35 sec of play
+  };
+
+  function isStorming() {
+    return weather.state === 'storming' && weather.intensity > 0.5;
+  }
+
+  function updateWeather(dt) {
+    weather.intensity += (weather.targetIntensity - weather.intensity) * Math.min(1, dt * 0.5);
+    weather.timer += dt;
+    if (weather.timer >= weather.nextChangeIn) {
+      weather.timer = 0;
+      if (weather.state === 'clear') {
+        if (Math.random() < 0.55) {
+          weather.state = 'storming';
+          weather.targetIntensity = 1;
+          weather.nextChangeIn = 12 + Math.random() * 18;     // storm lasts 12–30 s
+          thunderBoom(0.7);                                   // arrival rumble
+        } else {
+          weather.nextChangeIn = 25 + Math.random() * 35;     // wait then re-roll
+        }
+      } else {
+        weather.state = 'clear';
+        weather.targetIntensity = 0;
+        weather.nextChangeIn = 30 + Math.random() * 60;       // 30–90 s of clear weather
+      }
+    }
+  }
+
+  // Rain particles — count scales with screen area so phones aren't overwhelmed.
+  const RAIN = [];
+  function rainMax() { return Math.min(260, Math.max(40, Math.round((W * H) / 6000))); }
+  function updateRain(dt) {
+    const targetCount = Math.floor(weather.intensity * rainMax());
+    while (RAIN.length < targetCount) {
+      RAIN.push({
+        x: Math.random() * (W + 200) - 100,
+        y: -Math.random() * H,
+        vy: 720 + Math.random() * 260,
+        vx: -260 - Math.random() * 120,
+        len: 9 + Math.random() * 7,
+      });
+    }
+    for (let i = RAIN.length - 1; i >= 0; i--) {
+      const r = RAIN[i];
+      r.x += r.vx * dt;
+      r.y += r.vy * dt;
+      // Out of bounds — recycle if storm still wants this many drops, otherwise drop
+      if (r.y > H || r.x < -120 || r.x > W + 120) {
+        if (RAIN.length <= targetCount) {
+          r.x = Math.random() * (W + 200) - 100;
+          r.y = -Math.random() * 100;
+        } else {
+          RAIN.splice(i, 1);
+        }
+      }
+    }
+  }
+  function drawRain() {
+    if (weather.intensity < 0.02) return;
+    ctx.strokeStyle = `rgba(190, 210, 240, ${0.45 * weather.intensity})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (const r of RAIN) {
+      const norm = Math.hypot(r.vx, r.vy);
+      ctx.moveTo(r.x, r.y);
+      ctx.lineTo(r.x + (r.vx / norm) * r.len, r.y + (r.vy / norm) * r.len);
+    }
+    ctx.stroke();
+  }
+
+  // Lightning — random white flashes during storm
+  let lightning = 0;
+  function updateLightning(dt) {
+    lightning = Math.max(0, lightning - dt * 4);
+    if (weather.intensity > 0.6 && Math.random() < dt * 0.10) {
+      lightning = 1;
+      thunderBoom(0.55);
+    }
+  }
+  function drawLightning() {
+    if (lightning > 0.04) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${lightning * 0.55})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // Storm sky overlay — dims the world during a storm
+  function drawStormOverlay() {
+    if (weather.intensity < 0.02) return;
+    ctx.fillStyle = `rgba(45, 55, 75, ${weather.intensity * 0.42})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Synthesized thunder rumble — low-pass filtered noise burst
+  function thunderBoom(loudness = 0.6) {
+    if (!soundOn) return;
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const dur = 1.2 + Math.random() * 0.8;
+    const buffer = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const env = Math.pow(1 - i / data.length, 2.0);
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    const filter = c.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 220;
+    filter.Q.value = 0.7;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.exponentialRampToValueAtTime(loudness, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(filter).connect(g).connect(c.destination);
+    src.start(t);
+    src.stop(t + dur + 0.1);
+  }
+
+  function updateBirds(dt) {
+    for (let i = 0; i < BIRDS.length; i++) {
+      const b = BIRDS[i];
+      b.x += b.speed * b.dir * dt;
+      b.flapPhase += b.flapSpeed * dt;
+      // Gentle vertical drift
+      b.y = b.bobBaseY + Math.sin(b.flapPhase * 0.15 + i * 1.7) * b.bobAmp;
+      // Off-screen → respawn from the opposite side with new params
+      if (b.dir > 0 && b.x > 1.10) {
+        BIRDS[i] = spawnBird(false);
+        BIRDS[i].x = -0.10; BIRDS[i].dir = 1;
+        BIRDS[i].bobBaseY = BIRDS[i].y;
+      } else if (b.dir < 0 && b.x < -0.10) {
+        BIRDS[i] = spawnBird(false);
+        BIRDS[i].x = 1.10; BIRDS[i].dir = -1;
+        BIRDS[i].bobBaseY = BIRDS[i].y;
+      }
+    }
+  }
+
+  function drawBirds() {
+    ctx.strokeStyle = '#2a2f3a';
+    ctx.lineCap = 'round';
+    for (const b of BIRDS) {
+      const cx = b.x * W;
+      const cy = b.y * H;
+      const ws = b.size * H;          // wingspan half
+      const flap = Math.sin(b.flapPhase);
+      const wingTipY = cy - flap * ws * 0.55;
+      const wingMidY = cy - flap * ws * 0.05;
+      ctx.lineWidth = Math.max(1.2, ws * 0.16);
+      ctx.beginPath();
+      ctx.moveTo(cx - ws,         wingTipY);
+      ctx.quadraticCurveTo(cx - ws * 0.45, wingMidY, cx, cy + ws * 0.05);
+      ctx.quadraticCurveTo(cx + ws * 0.45, wingMidY, cx + ws, wingTipY);
+      ctx.stroke();
+    }
+  }
+
+  // ---------- drawing ----------
+  function drawBackground() {
+    const dl = getDaylight();
+    // sky gradient — lerps between day and night colors based on daylight
+    const top = lerpColor('#0c1838', '#88d3ee', dl);
+    const mid = lerpColor('#1f3060', '#bfe9f5', dl);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, top);
+    grad.addColorStop(0.6, mid);
+    grad.addColorStop(0.6001, '#7ec850');
+    grad.addColorStop(1, '#5da838');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Stars (only at night), then sun (day half) and moon (night half)
+    drawStars();
+    drawSun();
+    drawMoon();
+
+    // drifting clouds — slightly tinted darker at night
+    const cloudShade = Math.round(180 + dl * 75);
+    ctx.fillStyle = `rgba(${cloudShade},${cloudShade},${Math.round(cloudShade * 1.02)},0.9)`;
+    for (const c of CLOUDS) drawCloud(c.x * W, c.y * H, c.r * H);
+
+    // birds (drawn over the clouds but behind the grass/horizon)
+    drawBirds();
+
+    // grass blades — two layers for depth, varied heights + widths, swaying with the wind
+    drawGrassLayer(8,  10, 26, '#3d7a26', 1.0, 0.018, 3.0);  // back layer (denser, shorter, darker)
+    drawGrassLayer(11, 14, 36, '#5aa83b', 1.0, 0.025, 5.0);  // front layer (taller, lighter, sways more)
+
+    // Atmospheric depth — warm haze near horizon, dark band in the foreground
+    drawGroundDepth();
+
+    // ground props: grass tufts + rocks (drawn after the horizon grass so they sit on top)
+    drawGrassTufts();
+    drawRocks();
+
+    // pond shadow under duck (scales with daylight)
+    ctx.fillStyle = `rgba(0, 10, 5, ${0.08 + getDaylight() * 0.20})`;
+    ctx.beginPath();
+    ctx.ellipse(duck.x + duck.size * 0.08, duck.y + duck.size * 0.72, duck.size * 1.05, duck.size * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawGrassLayer(spacing, minH, maxH, color, alpha, swayPhaseStep, swayAmp) {
+    // Cheap deterministic per-blade pseudo-random so blades stay coherent across frames but vary
+    // with position. Each blade gets its own height, width, and phase offset for the wind sway.
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    const baseY = H * 0.6;
+    const t = game.timeMs * 0.001; // seconds
+    for (let i = 0; i < W; i += spacing) {
+      const seed = ((i * 9301 + 49297) % 233280) / 233280; // 0..1
+      const seed2 = ((i * 12289 + 33647) % 233280) / 233280;
+      const h = minH + seed * (maxH - minH);
+      const baseW = spacing * (0.55 + seed2 * 0.55);
+      const phase = seed * Math.PI * 2;
+      // Wind sway: a slow waving motion plus a faster rustle, peak amp at the tip
+      const stormWind = 1 + weather.intensity * 1.8;
+      const sway = (Math.sin(t * 1.6 * stormWind + phase + i * swayPhaseStep) * 0.85
+                  + Math.sin(t * 4.2 * stormWind + phase * 1.7) * 0.25) * swayAmp * stormWind;
+      const peakX = i + baseW * 0.5 + sway;
+      const peakY = baseY - h;
+      ctx.beginPath();
+      ctx.moveTo(i, baseY);
+      ctx.lineTo(peakX, peakY);
+      ctx.lineTo(i + baseW, baseY);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCloud(x, y, r) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.arc(x + r, y + r*0.2, r*0.9, 0, Math.PI*2);
+    ctx.arc(x - r*0.9, y + r*0.1, r*0.8, 0, Math.PI*2);
+    ctx.arc(x + r*0.4, y - r*0.4, r*0.7, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawFeather(x, y, size, angle, color, alpha = 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#9a6b00';
+    ctx.lineWidth = Math.max(1, size * 0.08);
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.bezierCurveTo(size * 0.7, -size * 0.6, size * 0.7, size * 0.4, 0, size);
+    ctx.bezierCurveTo(-size * 0.7, size * 0.4, -size * 0.7, -size * 0.6, 0, -size);
+    ctx.fill();
+    ctx.stroke();
+    // shaft
+    ctx.beginPath();
+    ctx.moveTo(0, -size); ctx.lineTo(0, size);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Donald palette
+  const D = {
+    BODY:    '#ffffff',
+    OUTLINE: '#3a2200',
+    SHIRT:   '#1f6fd9',
+    SHIRT_D: '#0a3878',
+    BOW:     '#dc1a1a',
+    BOW_D:   '#7a0808',
+    BEAK:    '#ffa01a',
+    BEAK_D:  '#d96400',
+    FOOT:    '#ffa01a',
+    HAT_BAND:'#ffd84a',
+  };
+
+  function drawBowTie(x, y, w, h) {
+    ctx.fillStyle = D.BOW;
+    ctx.strokeStyle = D.BOW_D;
+    ctx.lineWidth = w * 0.08;
+    // Left wing
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - w, y - h);
+    ctx.lineTo(x - w, y + h);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // Right wing
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y - h);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // Knot
+    ctx.fillStyle = D.BOW_D;
+    ctx.beginPath();
+    ctx.ellipse(x, y, w * 0.22, h * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawLeg(phaseOffset, baseX, baseY, isBack) {
+    const s = duck.size;
+    const phase = (duck.walkPhase + phaseOffset) * Math.PI * 2;
+    const stride = s * 0.13 * duck.walkSpeed;
+    const lift   = s * 0.10 * duck.walkSpeed;
+    // -cos => -1 at 0, +1 at π : foot starts at back, swings to front during the air phase
+    // sin > 0 only during 0..π : the air half of the cycle
+    const footDX = -Math.cos(phase) * stride;
+    const footDY = -Math.max(0, Math.sin(phase)) * lift;
+    const fx = baseX + footDX;
+    const fy = baseY + s * 0.18 + footDY;
+
+    // Leg
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.lineWidth = s * (isBack ? 0.05 : 0.06);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.lineTo(fx, fy);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    // Webbed foot — three toes, slightly fanned forward (toward facing-left = -x)
+    ctx.fillStyle = isBack ? '#e0780e' : D.FOOT;
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.lineWidth = s * 0.025;
+    ctx.beginPath();
+    ctx.moveTo(fx + s * 0.01,  fy - s * 0.02);
+    ctx.lineTo(fx - s * 0.20,  fy + s * 0.01);
+    ctx.lineTo(fx - s * 0.16,  fy + s * 0.04);
+    ctx.lineTo(fx - s * 0.08,  fy + s * 0.05);
+    ctx.lineTo(fx + s * 0.04,  fy + s * 0.04);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+
+  function drawDuck() {
+    const s = duck.size;
+    const x = duck.x;
+    // Body bob: small up/down with each step, plus passive breathing
+    const walkBob = duck.walkSpeed * Math.abs(Math.sin(duck.walkPhase * Math.PI * 2)) * s * 0.04;
+    const y = duck.y + Math.sin(duck.breath * 2) * s * 0.012 - walkBob;
+    const look = duck.look;             // 0 = side profile, 1 = front-on at camera
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(duck.facingDir, 1);   // mirror the whole duck when facingDir = -1
+    ctx.rotate((duck.state === DSTATE.ATTACK ? -duck.attackLunge * 0.06 : 0));
+
+    // ----- back leg (drawn first so the body covers the upper part) -----
+    drawLeg(0.5, s * 0.02, s * 0.5, true);
+
+    // ----- TAIL (anchored at the rump; wiggles after a pluck) -----
+    ctx.save();
+    ctx.translate(s * 0.82, -s * 0.08);
+    // Wiggle: ~9 Hz oscillation, amplitude scales with tailShake (peaks at ~31°)
+    const tailWiggle = Math.sin(game.timeMs * 0.055) * duck.tailShake * 0.55;
+    ctx.rotate(tailWiggle);
+
+    // Tail base — small rounded blob so the fan looks anchored
+    ctx.fillStyle = D.BODY;
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.lineWidth = s * 0.04;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.16, s * 0.11, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Fan of 4 feathers spreading outward from the base
+    const tailFan = [
+      { dx: -s * 0.04, dy: -s * 0.03, size: s * 0.20, ang: -0.7 },
+      { dx:  s * 0.00, dy: -s * 0.07, size: s * 0.24, ang: -0.25 },
+      { dx:  s * 0.05, dy: -s * 0.06, size: s * 0.23, ang: 0.20 },
+      { dx:  s * 0.09, dy: -s * 0.02, size: s * 0.20, ang: 0.65 },
+    ];
+    for (const tf of tailFan) {
+      drawFeather(tf.dx, tf.dy, tf.size, tf.ang, D.BODY);
+    }
+    ctx.restore();
+
+    // ----- body (white) -----
+    ctx.fillStyle = D.BODY;
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.lineWidth = s * 0.05;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.95, s * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Subtle belly shading
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.beginPath();
+    ctx.ellipse(0, s * 0.18, s * 0.6, s * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pluckable feathers (visible on rump/back only)
+    for (const f of duck.feathers) {
+      if (f.plucked) {
+        ctx.fillStyle = 'rgba(255,150,150,0.55)';
+        ctx.beginPath();
+        ctx.arc(f.ox, f.oy, f.size * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      drawFeather(f.ox, f.oy, f.size, f.angle, D.BODY, 0.95);
+    }
+
+    // ----- sailor shirt (blue tunic over upper-front body) -----
+    ctx.fillStyle = D.SHIRT;
+    ctx.strokeStyle = D.SHIRT_D;
+    ctx.lineWidth = s * 0.04;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.88, -s * 0.12);
+    ctx.bezierCurveTo(-s * 0.78, -s * 0.5,  -s * 0.45, -s * 0.55, -s * 0.28, -s * 0.4);
+    ctx.bezierCurveTo( 0,           -s * 0.58,  s * 0.4,   -s * 0.5,  s * 0.55, -s * 0.32);
+    ctx.lineTo(s * 0.55, s * 0.02);
+    ctx.lineTo(-s * 0.55, s * 0.08);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Sailor collar — large white V draping over the shirt's back/shoulders
+    ctx.fillStyle = D.BODY;
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.lineWidth = s * 0.03;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.28, -s * 0.4);   // front of neck (left side, since duck faces left)
+    ctx.lineTo( s * 0.55, -s * 0.32);  // back-top
+    ctx.bezierCurveTo(s * 0.45, -s * 0.05, s * 0.2, -s * 0.05, -s * 0.05, -s * 0.18);
+    ctx.lineTo(-s * 0.05, -s * 0.18);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Two darker blue stripes along the collar edge
+    ctx.strokeStyle = D.SHIRT_D;
+    ctx.lineWidth = s * 0.018;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.22, -s * 0.34);
+    ctx.lineTo( s * 0.5,  -s * 0.28);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.18, -s * 0.30);
+    ctx.lineTo( s * 0.45, -s * 0.24);
+    ctx.stroke();
+
+    // Bow tie at front of neck
+    drawBowTie(-s * 0.32, -s * 0.32, s * 0.18, s * 0.12);
+
+    // ----- wing/arm with sleeve -----
+    ctx.save();
+    ctx.translate(-s * 0.02, -s * 0.05);
+    const wingFlap = duck.state === DSTATE.ANGRY ? Math.sin(duck.breath * 18) * 0.28 : 0;
+    ctx.rotate(wingFlap);
+    // Sleeve
+    ctx.fillStyle = D.SHIRT;
+    ctx.strokeStyle = D.SHIRT_D;
+    ctx.lineWidth = s * 0.04;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.34, s * 0.24, -0.1, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    // White hand peeking out at the bottom
+    ctx.fillStyle = D.BODY;
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.18, s * 0.12, s * 0.16, s * 0.12, -0.3, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // ----- front leg (drawn after the body so it sits on top) -----
+    drawLeg(0, -s * 0.18, s * 0.5, false);
+
+    // ----- food crumbs while eating (in front of the duck, on the ground) -----
+    if (duck.eatDip > 0.05) {
+      ctx.save();
+      ctx.globalAlpha = duck.eatDip;
+      ctx.fillStyle = '#7a4e1c';
+      ctx.strokeStyle = '#3a2200';
+      ctx.lineWidth = s * 0.012;
+      const crumbs = [
+        [-0.42, 0.74, 0.030],
+        [-0.55, 0.76, 0.024],
+        [-0.50, 0.72, 0.022],
+        [-0.62, 0.74, 0.026],
+        [-0.38, 0.76, 0.020],
+        [-0.70, 0.75, 0.022],
+      ];
+      for (const [cx, cy, cr] of crumbs) {
+        ctx.beginPath();
+        ctx.arc(cx * s, cy * s, cr * s, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // ===== HEAD =====
+    // Head sits at the body's front (left in body coords). Position is no longer driven
+    // by `look` — `look` now controls the head pose (profile vs front-on).
+    const hxBase = -s * 0.5 - duck.eatDip * s * 0.18;
+    const hyBase = -s * 0.58 - Math.sin(look * Math.PI) * s * 0.04 + duck.eatDip * s * 0.7;
+    const fdir = -1; // head profile faces forward in body coords
+
+    let lungeX = 0, lungeY = 0;
+    if (duck.state === DSTATE.ATTACK) {
+      // Hand position is in screen coords; transform via facing flip back into body coords
+      const handBodyX = (hand.x - x) * duck.facingDir;
+      const handBodyY = (hand.y - y);
+      const dxh = handBodyX - hxBase;
+      const dyh = handBodyY - hyBase;
+      const d = Math.hypot(dxh, dyh) || 1;
+      const lungeAmt = duck.attackLunge * Math.min(s * 1.2, d * 0.85);
+      lungeX = (dxh / d) * lungeAmt;
+      lungeY = (dyh / d) * lungeAmt;
+    }
+    const hx = hxBase + lungeX;
+    const hy = hyBase + lungeY;
+    const headR = s * 0.4;
+
+    // Crossfade between side profile and front-on as look animates between 0 and 1
+    const sideAlpha  = Math.max(0, Math.min(1, (0.55 - look) / 0.2));
+    const frontAlpha = Math.max(0, Math.min(1, (look - 0.45) / 0.2));
+
+    const blinking = duck.blinkT > 0;
+    const angryEye = duck.state === DSTATE.ANGRY || duck.state === DSTATE.ATTACK;
+    const susEye   = duck.state === DSTATE.SUSPICIOUS;
+    const stateBeakOpen = (duck.state === DSTATE.ATTACK ? 0.7 + duck.attackLunge * 0.7 :
+                          duck.state === DSTATE.ANGRY ? 0.18 + Math.sin(duck.breath * 16) * 0.08 : 0);
+    // Pluck-react mouth (a quick snap-and-fade that piggybacks on whatever the state already is)
+    const reactBeakOpen = duck.reactionMouth * 0.55;
+    const beakOpen = Math.max(stateBeakOpen, reactBeakOpen);
+
+    // Head circle (drawn once, both poses use it)
+    ctx.fillStyle = D.BODY;
+    ctx.strokeStyle = D.OUTLINE;
+    ctx.lineWidth = s * 0.05;
+    ctx.beginPath();
+    ctx.arc(hx, hy, headR, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // ----- SIDE-PROFILE FEATURES -----
+    if (sideAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = sideAlpha;
+
+      // Cheek shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.04)';
+      ctx.beginPath();
+      ctx.arc(hx + fdir * headR * 0.3, hy + headR * 0.2, headR * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Side bill
+      const beakBaseX = hx + fdir * headR * 0.55;
+      const beakBaseY = hy + s * 0.05;
+      const beakLen = s * 0.46;
+      const beakH   = s * 0.18;
+      // Upper
+      ctx.fillStyle = D.BEAK;
+      ctx.strokeStyle = D.OUTLINE;
+      ctx.lineWidth = s * 0.04;
+      ctx.beginPath();
+      ctx.moveTo(beakBaseX, beakBaseY - beakH * 0.55);
+      ctx.bezierCurveTo(
+        beakBaseX + fdir * beakLen * 0.55, beakBaseY - beakH * 0.6,
+        beakBaseX + fdir * beakLen * 1.02, beakBaseY - beakOpen * beakH * 0.5,
+        beakBaseX + fdir * beakLen,        beakBaseY - beakOpen * beakH * 0.4
+      );
+      ctx.lineTo(beakBaseX + fdir * beakLen * 0.85, beakBaseY + beakH * 0.05 - beakOpen * beakH * 0.5);
+      ctx.lineTo(beakBaseX, beakBaseY + beakH * 0.05);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Nostril
+      ctx.fillStyle = D.OUTLINE;
+      ctx.beginPath();
+      ctx.arc(beakBaseX + fdir * beakLen * 0.25, beakBaseY - beakH * 0.25, s * 0.018, 0, Math.PI * 2);
+      ctx.fill();
+      // Lower
+      ctx.fillStyle = D.BEAK_D;
+      ctx.strokeStyle = D.OUTLINE;
+      ctx.lineWidth = s * 0.04;
+      ctx.beginPath();
+      ctx.moveTo(beakBaseX, beakBaseY + beakH * 0.05);
+      ctx.lineTo(beakBaseX + fdir * beakLen * 0.85, beakBaseY + beakH * 0.05 + beakOpen * beakH * 0.5);
+      ctx.bezierCurveTo(
+        beakBaseX + fdir * beakLen * 0.85, beakBaseY + beakH * 0.7  + beakOpen * beakH * 0.6,
+        beakBaseX + fdir * beakLen * 0.4,  beakBaseY + beakH * 0.75 + beakOpen * beakH * 0.4,
+        beakBaseX,                          beakBaseY + beakH * 0.6
+      );
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      if (beakOpen > 0.3) {
+        ctx.fillStyle = '#d2466a';
+        ctx.beginPath();
+        ctx.ellipse(beakBaseX + fdir * beakLen * 0.45, beakBaseY + beakH * 0.25, beakLen * 0.32, beakH * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Single profile eye
+      const eyeX = hx + fdir * headR * 0.25;
+      const eyeY = hy - headR * 0.28;
+      if (blinking && !angryEye) {
+        ctx.strokeStyle = D.OUTLINE;
+        ctx.lineWidth = s * 0.03;
+        ctx.beginPath();
+        ctx.moveTo(eyeX - headR * 0.22, eyeY);
+        ctx.lineTo(eyeX + headR * 0.22, eyeY);
+        ctx.stroke();
+      } else {
+        const eyeW = headR * 0.24;
+        const eyeHe = headR * 0.36;
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = D.OUTLINE;
+        ctx.lineWidth = s * 0.028;
+        ctx.beginPath();
+        ctx.ellipse(eyeX, eyeY, eyeW, eyeHe, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath();
+        ctx.ellipse(eyeX + fdir * eyeW * 0.3, eyeY, eyeW * 0.45, eyeHe * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(eyeX + fdir * eyeW * 0.42, eyeY - eyeHe * 0.25, eyeW * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // ----- FRONT-ON FEATURES (head-on glare, mimics duck_serious.jpg) -----
+    if (frontAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = frontAlpha;
+
+      // Soft cheek shadow under the eyes
+      ctx.fillStyle = 'rgba(0,0,0,0.04)';
+      ctx.beginPath();
+      ctx.arc(hx, hy + headR * 0.3, headR * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ----- Big round Donald-style eyes -----
+      const eyeY = hy - headR * 0.13;
+      const eyeOff = headR * 0.30;
+      // Bigger eye whites overall, slightly smaller when angry (squinting)
+      const eyeR = headR * (susEye ? 0.30 : angryEye ? 0.26 : 0.28);
+      // Pupil is a small bead — way smaller than before for that innocent Donald look
+      const pupilR = eyeR * (angryEye ? 0.32 : 0.28);
+      // Pupils drift slightly toward each other / slightly downward — reads as cute
+      const pupilDX = eyeR * (susEye ? 0.05 : 0.08);
+      const pupilDY = eyeR * (angryEye ? -0.05 : 0.06);
+
+      for (const sgn of [-1, 1]) {
+        const ex = hx + sgn * eyeOff;
+        if (blinking && !angryEye) {
+          // Happy ^^ blink curve instead of a flat line
+          ctx.strokeStyle = D.OUTLINE;
+          ctx.lineWidth = s * 0.03;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(ex - eyeR * 0.85, eyeY + eyeR * 0.1);
+          ctx.quadraticCurveTo(ex, eyeY - eyeR * 0.5, ex + eyeR * 0.85, eyeY + eyeR * 0.1);
+          ctx.stroke();
+          ctx.lineCap = 'butt';
+        } else {
+          // Eye white (tall oval is cuter than a perfect circle)
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = D.OUTLINE;
+          ctx.lineWidth = s * 0.028;
+          ctx.beginPath();
+          ctx.ellipse(ex, eyeY, eyeR * 0.95, eyeR * 1.05, 0, 0, Math.PI * 2);
+          ctx.fill(); ctx.stroke();
+          // Small pupil bead, drifted toward center for an "aww" expression
+          ctx.fillStyle = angryEye ? '#c00' : '#111';
+          ctx.beginPath();
+          ctx.arc(ex - sgn * pupilDX, eyeY + pupilDY, pupilR, 0, Math.PI * 2);
+          ctx.fill();
+          // Big sparkly glint
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(ex - sgn * pupilDX - sgn * pupilR * 0.3, eyeY + pupilDY - pupilR * 0.4, pupilR * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+          // Tiny secondary highlight
+          ctx.beginPath();
+          ctx.arc(ex - sgn * pupilDX + sgn * pupilR * 0.4, eyeY + pupilDY + pupilR * 0.4, pupilR * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Soft angry eyebrows — slightly less menacing, still expressive
+      if (angryEye) {
+        ctx.strokeStyle = D.OUTLINE;
+        ctx.lineWidth = s * 0.06;
+        ctx.lineCap = 'round';
+        for (const sgn of [-1, 1]) {
+          ctx.beginPath();
+          // Curved brow rather than straight line — softer
+          ctx.moveTo(hx + sgn * (eyeOff + headR * 0.30), eyeY - headR * 0.42);
+          ctx.quadraticCurveTo(
+            hx + sgn * (eyeOff + headR * 0.05), eyeY - headR * 0.36,
+            hx + sgn * (eyeOff - headR * 0.18), eyeY - headR * 0.20
+          );
+          ctx.stroke();
+        }
+        ctx.lineCap = 'butt';
+      }
+
+      // ----- Cuter Donald bill — wider, rounded, and with a smile-curve when closed -----
+      const bcY = hy + headR * 0.46;
+      const brx = headR * 0.62;
+      const bry = headR * 0.30;
+      const split = bcY + beakOpen * bry * 0.55; // where the upper/lower meet
+      // Upper bill — smooth dome that curves down at the corners (Donald shape)
+      ctx.fillStyle = D.BEAK;
+      ctx.strokeStyle = D.OUTLINE;
+      ctx.lineWidth = s * 0.04;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(hx - brx, split + bry * 0.05);
+      ctx.bezierCurveTo(
+        hx - brx, bcY - bry * 1.05,
+        hx + brx, bcY - bry * 1.05,
+        hx + brx, split + bry * 0.05
+      );
+      // bottom of upper bill — gently curved (smile shape) when closed, opens up when active
+      ctx.bezierCurveTo(
+        hx + brx * 0.55, split - bry * 0.02 - beakOpen * bry * 0.15,
+        hx - brx * 0.55, split - bry * 0.02 - beakOpen * bry * 0.15,
+        hx - brx, split + bry * 0.05
+      );
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+
+      // Lower bill — smaller rounded shape, only really visible when bill is open
+      if (beakOpen > 0.05) {
+        ctx.fillStyle = D.BEAK_D;
+        ctx.strokeStyle = D.OUTLINE;
+        ctx.beginPath();
+        ctx.moveTo(hx - brx * 0.92, split + bry * 0.05);
+        ctx.bezierCurveTo(
+          hx - brx * 0.5, split + bry * (0.7 + beakOpen * 0.6),
+          hx + brx * 0.5, split + bry * (0.7 + beakOpen * 0.6),
+          hx + brx * 0.92, split + bry * 0.05
+        );
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        // Tongue
+        if (beakOpen > 0.3) {
+          ctx.fillStyle = '#d2466a';
+          ctx.beginPath();
+          ctx.ellipse(hx, split + bry * 0.35, brx * 0.55, bry * 0.25, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Subtle smile line when closed
+        ctx.strokeStyle = D.BEAK_D;
+        ctx.lineWidth = s * 0.02;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(hx - brx * 0.7, split + bry * 0.04);
+        ctx.quadraticCurveTo(hx, split + bry * 0.15, hx + brx * 0.7, split + bry * 0.04);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+
+      // Tiny soft nostrils
+      ctx.fillStyle = D.OUTLINE;
+      ctx.beginPath();
+      ctx.arc(hx - brx * 0.30, bcY - bry * 0.48, s * 0.014, 0, Math.PI * 2);
+      ctx.arc(hx + brx * 0.30, bcY - bry * 0.48, s * 0.014, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // ===== SAILOR HAT =====
+    {
+      const hatCY = hy - headR * 0.78;
+      // Brim
+      ctx.fillStyle = D.SHIRT;
+      ctx.strokeStyle = D.OUTLINE;
+      ctx.lineWidth = s * 0.04;
+      ctx.beginPath();
+      ctx.ellipse(hx, hatCY + headR * 0.05, headR * 0.95, headR * 0.18, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      // Dome
+      ctx.beginPath();
+      ctx.ellipse(hx, hatCY, headR * 0.78, headR * 0.42, 0, Math.PI, 0, true);
+      ctx.lineTo(hx + headR * 0.78, hatCY + headR * 0.05);
+      ctx.lineTo(hx - headR * 0.78, hatCY + headR * 0.05);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Yellow piping
+      ctx.strokeStyle = D.HAT_BAND;
+      ctx.lineWidth = s * 0.025;
+      ctx.beginPath();
+      ctx.ellipse(hx, hatCY + headR * 0.05, headR * 0.78, headR * 0.06, 0, 0, Math.PI);
+      ctx.stroke();
+      // Red ribbon — only visible while head is in side profile (hidden behind head when face-on)
+      if (sideAlpha > 0.05) {
+        ctx.save();
+        ctx.globalAlpha = sideAlpha;
+        const ribDir = -fdir; // ribbon trails behind, opposite of head's profile direction
+        ctx.fillStyle = D.BOW;
+        ctx.strokeStyle = D.BOW_D;
+        ctx.lineWidth = s * 0.025;
+        ctx.beginPath();
+        ctx.moveTo(hx + ribDir * headR * 0.45, hatCY + headR * 0.0);
+        ctx.bezierCurveTo(
+          hx + ribDir * headR * 1.0,  hatCY + headR * 0.05,
+          hx + ribDir * headR * 1.05, hatCY + headR * 0.45,
+          hx + ribDir * headR * 0.75, hatCY + headR * 0.55
+        );
+        ctx.lineTo(hx + ribDir * headR * 0.35, hatCY + headR * 0.18);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(hx + ribDir * headR * 0.85, hatCY + headR * 0.5);
+        ctx.lineTo(hx + ribDir * headR * 1.15, hatCY + headR * 0.7);
+        ctx.lineTo(hx + ribDir * headR * 0.65, hatCY + headR * 0.62);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // ----- alert / anger overlays (above the head) -----
+    if (duck.state === DSTATE.SUSPICIOUS) {
+      const bob = Math.sin(game.timeMs * 0.02) * 4;
+      ctx.save();
+      // Counter-flip text so the "!" reads correctly even when the duck is mirrored
+      ctx.translate(hx, hy - headR * 1.7 + bob);
+      ctx.scale(duck.facingDir, 1);
+      ctx.font = `bold ${Math.floor(s * 0.55)}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = s * 0.08;
+      ctx.strokeStyle = '#fff';
+      ctx.strokeText('!', 0, 0);
+      ctx.fillStyle = '#ff3030';
+      ctx.fillText('!', 0, 0);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+    }
+    if (duck.state === DSTATE.ANGRY) {
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      for (let i = 0; i < 3; i++) {
+        const t = (game.timeMs * 0.005 + i * 0.5) % 1;
+        const px = hx + Math.sin(t * 6 + i) * s * 0.06;
+        const py = hy - headR * 1.7 - t * s * 0.4;
+        ctx.beginPath();
+        ctx.arc(px, py, s * 0.06 * (1 - t * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawHand() {
+    // Hide the canvas hand whenever an overlay is up so the OS cursor can be used to click buttons.
+    if (game.state !== STATE.PLAYING || game.paused) return;
+    const s = duck.size;
+    let hx = hand.x, hy = hand.y;
+
+    // Reach forward (toward duck) when plucking
+    if (hand.reach > 0.01) {
+      const dx = duck.x - hx, dy = duck.y - hy;
+      const d = Math.hypot(dx, dy) || 1;
+      hx += (dx / d) * hand.reach * s * 0.18;
+      hy += (dy / d) * hand.reach * s * 0.18;
+    }
+
+    // Hand: small cartoon hand reaching, palm forward
+    ctx.save();
+    ctx.translate(hx, hy);
+    // angle hand toward duck slightly
+    const ang = Math.atan2(duck.y - hand.y, duck.x - hand.x);
+    ctx.rotate(ang);
+
+    const hs = Math.min(W, H) * 0.05;
+
+    // wrist/cuff
+    ctx.fillStyle = '#3a76ff';
+    ctx.strokeStyle = '#1a3a99';
+    ctx.lineWidth = hs * 0.18;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(-hs*1.6, -hs*0.8, hs*1.0, hs*1.6, hs*0.2) :
+      ctx.rect(-hs*1.6, -hs*0.8, hs*1.0, hs*1.6);
+    ctx.fill(); ctx.stroke();
+
+    // palm
+    ctx.fillStyle = '#ffd6a8';
+    ctx.strokeStyle = '#7a4a1a';
+    ctx.lineWidth = hs * 0.12;
+    ctx.beginPath();
+    ctx.ellipse(-hs*0.2, 0, hs*0.95, hs*0.85, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // fingers (pinching)
+    const pinch = 0.25 + hand.reach * 0.4;
+    const fingerLen = hs * (1.05 - hand.reach * 0.15);
+    // index finger (top)
+    ctx.beginPath();
+    ctx.ellipse(hs * 0.4, -hs*0.45 + pinch*hs*0.15, fingerLen*0.5, hs*0.22, -0.25, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    // thumb (bottom)
+    ctx.beginPath();
+    ctx.ellipse(hs * 0.35, hs*0.4 - pinch*hs*0.15, fingerLen*0.45, hs*0.22, 0.3, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    // other fingers tucked
+    ctx.beginPath();
+    ctx.ellipse(hs * 0.05, hs*0.05, hs*0.5, hs*0.3, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawSparkle(x, y, size, rot, color, alpha) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    // 4-pointed star
+    const r = size, r2 = size * 0.32;
+    ctx.moveTo(0, -r);
+    ctx.lineTo(r2, -r2);
+    ctx.lineTo(r, 0);
+    ctx.lineTo(r2, r2);
+    ctx.lineTo(0, r);
+    ctx.lineTo(-r2, r2);
+    ctx.lineTo(-r, 0);
+    ctx.lineTo(-r2, -r2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      const a = Math.max(0, Math.min(1, p.life / p.maxLife));
+      if (p.kind === 'feather') {
+        drawFeather(p.x, p.y, p.size, p.rot, p.color, a);
+      } else if (p.kind === 'sparkle') {
+        drawSparkle(p.x, p.y, p.size, p.rot, p.color, a);
+      } else if (p.kind === 'z') {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = a;
+        ctx.font = `bold ${Math.floor(p.size)}px ${getComputedStyle(document.body).fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = p.size * 0.14;
+        ctx.strokeStyle = '#5a3a00';
+        ctx.strokeText('z', 0, 0);
+        ctx.fillStyle = '#fff';
+        ctx.fillText('z', 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      } else {
+        ctx.globalAlpha = a;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  function drawTensionMeter() {
+    if (game.state !== STATE.PLAYING) return;
+    const t = game.tension;
+    if (t < 0.02) return;
+
+    const barW = Math.min(280, W * 0.4);
+    const barH = 14;
+    const x = (W - barW) / 2;
+    const y = 22;
+
+    // Frame
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x - 3, y - 3, barW + 6, barH + 6);
+
+    // Background
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(x, y, barW, barH);
+
+    // Fill — green → yellow → red as tension rises
+    const hue = Math.max(0, 110 - t * 110); // 110 (green) -> 0 (red)
+    const pulse = t > 0.7 ? 0.85 + 0.15 * Math.sin(game.timeMs * 0.018) : 1;
+    ctx.fillStyle = `hsl(${hue}, 85%, ${50 * pulse}%)`;
+    ctx.fillRect(x, y, barW * t, barH);
+
+    // Danger threshold tick
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + barW * TENSION_SAFE, y - 2);
+    ctx.lineTo(x + barW * TENSION_SAFE, y + barH + 2);
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#5a3a00';
+    ctx.lineWidth = 3;
+    ctx.font = `bold 13px ${getComputedStyle(document.body).fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const label = t > TENSION_SAFE ? 'DANGER!' : 'Caution';
+    ctx.strokeText(label, W / 2, y - 4);
+    ctx.fillText(label, W / 2, y - 4);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  function draw() {
+    ctx.save();
+    // screen shake
+    const sx = (Math.random() - 0.5) * game.shake;
+    const sy = (Math.random() - 0.5) * game.shake;
+    ctx.translate(sx, sy);
+
+    drawBackground();
+    drawDuck();
+    drawParticles();
+    drawHand();
+
+    // Storm overlay dims the world during stormy weather
+    drawStormOverlay();
+    // Rain in front of everything in the world (under the UI / lightning flash)
+    drawRain();
+
+    // moonlight tint over the whole scene at night, so the duck/grass also look "darker"
+    {
+      const dl = getDaylight();
+      if (dl < 0.7) {
+        const t = (0.7 - dl) / 0.7;          // 0 at dl=0.7, 1 at dl=0
+        ctx.fillStyle = `rgba(20, 40, 90, ${t * 0.32})`;
+        ctx.fillRect(-50, -50, W + 100, H + 100);
+      }
+    }
+
+    // Lightning white-flash overlay (briefly washes the whole scene)
+    drawLightning();
+
+    drawTensionMeter();
+
+    // flash on bite
+    if (game.flash > 0) {
+      ctx.fillStyle = `rgba(255,80,80,${game.flash * 0.5})`;
+      ctx.fillRect(-50, -50, W + 100, H + 100);
+    }
+    ctx.restore();
+  }
+
+  // ---------- main loop ----------
+  let lastT = 0;
+  function loop(t) {
+    if (!lastT) lastT = t;
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- game flow ----------
+  function startGame() {
+    // Need a current user — bounce back to the title screen if none chosen yet
+    if (!game.currentUser) {
+      const ti = document.getElementById('titleScreen');
+      ti.classList.remove('hidden'); ti.classList.add('active');
+      document.getElementById('nameInput').focus();
+      return;
+    }
+    // Sync the displayed best with this user's record
+    const u = getUser(game.currentUser);
+    game.hiscore = u ? (u.bestScore || 0) : 0;
+    game.state = STATE.PLAYING;
+    game.score = 0;
+    game.shake = 0;
+    game.flash = 0;
+    game.tension = 0;
+    game.paused = false;
+    game.goldenBoost = 0;
+    game.elapsedMs = 0;
+    document.getElementById('timer').textContent = '0:00';
+    document.getElementById('goldenScreen').classList.add('hidden');
+    document.getElementById('goldenScreen').classList.remove('active');
+    duck.attackLunge = 0;
+    hand.biting = false;
+    duck.x = W * 0.42;
+    duck.y = H * 0.62;
+    duck.walkTarget = null;
+    duck.walkPauseTimer = 0.5;
+    duck.walkPhase = 0;
+    duck.walkSpeed = 0;
+    duck.eatTimer = 0;
+    duck.eatPhase = 0;
+    duck.eatDip = 0;
+    duck.facingDir = 1;
+    duck.reactionMouth = 0;
+    duck.tailShake = 0;
+    initFeathers();
+    setDuckIdle();
+    duck.look = 0;
+    duck.lookTarget = 0;
+    duck.reactionTimer = Math.max(2200, duck.reactionTimer); // slightly easier first turn
+    document.getElementById('score').textContent = '0';
+    document.getElementById('hiscore').textContent = game.hiscore;
+    document.getElementById('titleScreen').classList.add('hidden');
+    document.getElementById('titleScreen').classList.remove('active');
+    document.getElementById('overScreen').classList.add('hidden');
+    document.getElementById('overScreen').classList.remove('active');
+    document.getElementById('scoreUI').classList.remove('hidden');
+    document.getElementById('soundToggle').classList.remove('hidden');
+  }
+
+  function showGoldenPopup() {
+    if (game.state !== STATE.PLAYING) return;
+    game.paused = true;
+    document.getElementById('goldenOldScore').textContent = game.score;
+    document.getElementById('goldenNewScore').textContent = game.score * 2;
+    const ov = document.getElementById('goldenScreen');
+    ov.classList.remove('hidden');
+    ov.classList.add('active');
+  }
+
+  function continueAfterGolden() {
+    game.score *= 2;
+    game.goldenBoost++;
+    document.getElementById('score').textContent = game.score;
+    const ov = document.getElementById('goldenScreen');
+    ov.classList.add('hidden');
+    ov.classList.remove('active');
+    game.paused = false;
+    // Reset tension so the user isn't immediately bitten on the first post-popup click
+    game.tension = 0;
+    // Roll a fresh reaction timer with the new (harsher) range
+    rollReactionTimer();
+  }
+
+  function endGame() {
+    game.state = STATE.OVER;
+    document.getElementById('finalScore').textContent = game.score;
+    document.getElementById('finalTime').textContent = formatTime(game.elapsedMs);
+    const prevBest = game.hiscore;
+    const newBest = game.score > prevBest;
+    document.getElementById('newBest').classList.toggle('hidden', !newBest);
+    // Persist this play to the per-user database
+    if (game.currentUser) {
+      const u = recordPlay(game.currentUser, game.score, game.elapsedMs);
+      game.hiscore = u.bestScore;
+      document.getElementById('hiscore').textContent = game.hiscore;
+    }
+    // Keep the legacy global pluckHi in sync too
+    if (newBest) {
+      localStorage.setItem('pluckHi', String(Math.max(parseInt(localStorage.getItem('pluckHi') || '0', 10), game.score)));
+    }
+    document.getElementById('overScreen').classList.remove('hidden');
+    document.getElementById('overScreen').classList.add('active');
+  }
+
+  // ---------- bind UI ----------
+  const nameInputEl = document.getElementById('nameInput');
+  const welcomeMsgEl = document.getElementById('welcomeMsg');
+  const startBtnEl = document.getElementById('startBtn');
+
+  function refreshWelcome() {
+    const n = normalizeName(nameInputEl.value);
+    welcomeMsgEl.classList.remove('returning');
+    if (!n) {
+      welcomeMsgEl.innerHTML = '&nbsp;';
+      startBtnEl.textContent = 'Start';
+      return;
+    }
+    const u = getUser(n);
+    if (u) {
+      welcomeMsgEl.classList.add('returning');
+      const date = u.lastPlayed ? new Date(u.lastPlayed).toLocaleDateString() : '?';
+      const bestTimeStr = u.bestDurationMs ? ` · Best ⏱ <b>${formatTime(u.bestDurationMs)}</b>` : '';
+      welcomeMsgEl.innerHTML = `Welcome back, ${escapeHtml(n)}! 🎉<br>Best: <b>${u.bestScore}</b>${bestTimeStr} · Plays: ${u.plays || u.scores?.length || 0} · Last: ${date}`;
+      startBtnEl.textContent = 'Play Again';
+    } else {
+      welcomeMsgEl.innerHTML = `Welcome, <b>${escapeHtml(n)}</b>! First time — good luck.`;
+      startBtnEl.textContent = 'Start';
+    }
+  }
+  nameInputEl.addEventListener('input', refreshWelcome);
+  nameInputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); startBtnEl.click(); }
+  });
+  // Stop the input from also firing pluck-related window listeners
+  nameInputEl.addEventListener('mousedown', e => e.stopPropagation());
+  nameInputEl.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+
+  function tryStartFromTitle() {
+    const n = normalizeName(nameInputEl.value);
+    if (!n) {
+      nameInputEl.focus();
+      welcomeMsgEl.innerHTML = '<span style="color:#ff8a8a;">Please enter a name first.</span>';
+      return;
+    }
+    game.currentUser = n;
+    ac();
+    startGame();
+  }
+
+  startBtnEl.addEventListener('click', e => { e.stopPropagation(); tryStartFromTitle(); });
+  document.getElementById('restartBtn').addEventListener('click', e => { e.stopPropagation(); ac(); startGame(); });
+  document.getElementById('changeUserBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    // Bounce back to the title screen so a different user can be chosen
+    const ov = document.getElementById('overScreen');
+    ov.classList.add('hidden'); ov.classList.remove('active');
+    document.getElementById('scoreUI').classList.add('hidden');
+    game.state = STATE.TITLE;
+    game.currentUser = null;
+    const ti = document.getElementById('titleScreen');
+    ti.classList.remove('hidden'); ti.classList.add('active');
+    refreshWelcome();
+    setTimeout(() => { nameInputEl.focus(); nameInputEl.select(); }, 30);
+  });
+  document.getElementById('goldenContinueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterGolden(); });
+
+  // Scoreboard show/hide
+  function renderScoreboard() {
+    const board = getLeaderboard(20);
+    const listEl = document.getElementById('scoreboardList');
+    if (board.length === 0) {
+      listEl.innerHTML = '<div class="empty">No scores yet — be the first!</div>';
+      return;
+    }
+    const me = game.currentUser;
+    listEl.innerHTML = board.map((u, i) => {
+      const youCls = (me && u.name === me) ? ' you' : '';
+      const plays = u.plays || (u.scores ? u.scores.length : 0);
+      return `<div class="row"><span class="rank">#${i+1}</span><span class="name${youCls}">${escapeHtml(u.name)}</span><span class="best">${u.bestScore}</span><span class="plays">${plays} play${plays===1?'':'s'}</span></div>`;
+    }).join('');
+  }
+  function showScoreboard() {
+    renderScoreboard();
+    document.getElementById('titleScreen').classList.add('hidden');
+    document.getElementById('titleScreen').classList.remove('active');
+    const sb = document.getElementById('scoreboardScreen');
+    sb.classList.remove('hidden');
+    sb.classList.add('active');
+  }
+  function hideScoreboard() {
+    const sb = document.getElementById('scoreboardScreen');
+    sb.classList.add('hidden');
+    sb.classList.remove('active');
+    const ti = document.getElementById('titleScreen');
+    ti.classList.remove('hidden');
+    ti.classList.add('active');
+    refreshWelcome();
+  }
+  document.getElementById('scoreboardBtn').addEventListener('click', e => { e.stopPropagation(); showScoreboard(); });
+
+  // ----- How-to-play modal -----
+  function showHowTo() {
+    document.getElementById('titleScreen').classList.add('hidden');
+    document.getElementById('titleScreen').classList.remove('active');
+    const ov = document.getElementById('howToScreen');
+    ov.classList.remove('hidden'); ov.classList.add('active');
+    // Scroll the list back to the top each time the modal opens
+    document.getElementById('howToList').scrollTop = 0;
+  }
+  function hideHowTo() {
+    const ov = document.getElementById('howToScreen');
+    ov.classList.add('hidden'); ov.classList.remove('active');
+    document.getElementById('titleScreen').classList.remove('hidden');
+    document.getElementById('titleScreen').classList.add('active');
+    refreshWelcome();
+  }
+  document.getElementById('howToBtn').addEventListener('click', e => { e.stopPropagation(); showHowTo(); });
+  document.getElementById('howToBackBtn').addEventListener('click', e => { e.stopPropagation(); hideHowTo(); });
+  document.getElementById('scoreboardBackBtn').addEventListener('click', e => { e.stopPropagation(); hideScoreboard(); });
+  document.getElementById('soundToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    soundOn = !soundOn;
+    document.getElementById('soundToggle').textContent = soundOn ? '🔊' : '🔇';
+  });
+
+  // Prevent the title/over button click from also firing pluck
+  ['titleScreen','overScreen','goldenScreen','scoreboardScreen','howToScreen'].forEach(id => {
+    document.getElementById(id).addEventListener('mousedown', e => e.stopPropagation());
+    document.getElementById(id).addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  });
+
+  // ---------- boot ----------
+  resize();
+  initFeathers();
+  hand.x = hand.tx = W / 2 + 100;
+  hand.y = hand.ty = H / 2;
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

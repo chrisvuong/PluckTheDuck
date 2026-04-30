@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Pluck the Duck — 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; touch-action: none; background: #88d3ee; }
+  body { font-family: 'Comic Sans MS', 'Trebuchet MS', system-ui, sans-serif; }
+  #wrap { position: fixed; inset: 0; cursor: none; }
+  /* Show the system cursor whenever an overlay (with buttons) is up so the user can click */
+  .overlay.active, .overlay.active * { cursor: default; }
+  .btn { cursor: pointer !important; }
+  #soundToggle { cursor: pointer !important; }
+  canvas { display: block; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: none; color: #fff; text-align: center; padding: 20px;
+    text-shadow: 3px 3px 0 #5a3a00, -1px -1px 0 #5a3a00, 1px -1px 0 #5a3a00, -1px 1px 0 #5a3a00;
+  }
+  .overlay.active { pointer-events: auto; }
+  .overlay.gameover { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+
+  .title { font-size: clamp(40px, 9vw, 86px); color: #fff34d; margin-bottom: 8px; line-height: 1; }
+  .subtitle { font-size: clamp(15px, 2.6vw, 22px); margin-bottom: 28px; max-width: 560px; line-height: 1.4; }
+  .hint { font-size: clamp(13px, 2vw, 17px); margin-top: 22px; opacity: 0.9; max-width: 480px; }
+
+  .btn {
+    background: #ff8c00; color: #fff; border: 4px solid #5a3a00;
+    padding: 14px 38px; font-size: clamp(20px, 3vw, 28px); font-weight: bold;
+    border-radius: 50px; cursor: pointer; font-family: inherit;
+    box-shadow: 0 6px 0 #5a3a00; transition: transform .08s, box-shadow .08s;
+    text-shadow: 2px 2px 0 #5a3a00;
+  }
+  .btn:hover { transform: translateY(2px); box-shadow: 0 4px 0 #5a3a00; }
+  .btn:active { transform: translateY(6px); box-shadow: 0 0 0 #5a3a00; }
+
+  #scoreUI {
+    position: absolute; top: 18px; right: 22px; text-align: right; pointer-events: none;
+    color: #fff; font-weight: bold;
+    text-shadow: 3px 3px 0 #5a3a00, -1px -1px 0 #5a3a00, 1px -1px 0 #5a3a00, -1px 1px 0 #5a3a00;
+  }
+  #scoreUI .big { font-size: clamp(28px, 5vw, 44px); line-height: 1; }
+  #scoreUI .label { font-size: 0.55em; opacity: .9; display: block; }
+  #scoreUI .high { font-size: clamp(14px, 2vw, 18px); color: #ffe066; margin-top: 4px; }
+  #soundToggle {
+    position: absolute; top: 18px; left: 18px;
+    background: rgba(255,255,255,0.85); border: 3px solid #5a3a00;
+    width: 46px; height: 46px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 22px; font-family: inherit;
+    box-shadow: 0 3px 0 #5a3a00;
+  }
+  /* Tension meter — top center */
+  #tensionMeter {
+    position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    width: clamp(180px, 28vw, 320px); pointer-events: none; display: none;
+  }
+  #tensionMeter.visible { display: block; }
+  #tensionMeter .label {
+    color: #fff; font-size: 13px; font-weight: bold; text-align: center; margin-bottom: 4px;
+    text-shadow: 2px 2px 0 #5a3a00;
+  }
+  #tensionMeter .frame { background: rgba(0,0,0,0.35); padding: 3px; border-radius: 4px; position: relative; }
+  #tensionMeter .bar { background: rgba(255,255,255,0.25); height: 14px; border-radius: 2px; overflow: hidden; position: relative; }
+  #tensionMeter .fill { height: 100%; background: hsl(110, 85%, 50%); transition: width 0.06s linear, background-color 0.1s linear; }
+  #tensionMeter .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.7); }
+  .hidden { display: none !important; }
+  #newBest { color: #ffe066; font-weight: bold; }
+
+  @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  .pop { animation: pop .35s ease-out; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="scoreUI" class="hidden">
+    <span class="label">Feathers</span>
+    <div class="big"><span id="score">0</span></div>
+    <div class="high">Best: <span id="hiscore">0</span></div>
+  </div>
+  <button id="soundToggle" class="hidden" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+  <div id="tensionMeter">
+    <div class="label" id="tensionLabel">Caution</div>
+    <div class="frame">
+      <div class="bar">
+        <div class="fill" id="tensionFill" style="width:0%"></div>
+      </div>
+      <div class="tick" id="tensionTick"></div>
+    </div>
+  </div>
+
+  <div id="titleScreen" class="overlay active">
+    <div class="title pop">🐤 Pluck the Duck — 3D</div>
+    <div class="subtitle">Sneak feathers off the duck — but stop clicking the moment it turns to look at you, or you'll get bit.</div>
+    <button class="btn" id="startBtn">Start</button>
+    <div class="hint">🖱️ Click / tap on the duck to pluck. Watch the head!</div>
+  </div>
+
+  <div id="overScreen" class="overlay gameover hidden">
+    <div class="title pop" style="color:#ff6b6b;">Got Bit! 💢</div>
+    <div class="subtitle">You plucked <span id="finalScore">0</span> feathers.<br><span id="newBest" class="hidden">🏆 New best!</span></div>
+    <button class="btn" id="restartBtn">Try Again</button>
+  </div>
+
+  <div id="goldenScreen" class="overlay hidden" style="background:radial-gradient(ellipse at center, rgba(120,80,0,0.55) 0%, rgba(0,0,0,0.55) 70%); backdrop-filter: blur(2px);">
+    <div class="title pop" style="color:#ffd84a;">⭐ GOLDEN FEATHER! ⭐</div>
+    <div class="subtitle">
+      Score doubled: <span id="goldenOldScore">0</span> → <span style="color:#ffd84a;" id="goldenNewScore">0</span><br>
+      <span style="color:#ff8a8a;">⚠ The duck is furious now…</span>
+    </div>
+    <button class="btn" id="goldenContinueBtn" style="background:#ffd84a; color:#5a3a00; text-shadow:none; border-color:#5a3a00;">Keep Going!</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+(() => {
+  // ============================================================
+  // CONSTANTS / PALETTE
+  // ============================================================
+  const COL = {
+    body: 0xffffff, shirt: 0x1f6fd9, shirtD: 0x0a3878,
+    bow: 0xdc1a1a, bowD: 0x7a0808, beak: 0xffa01a, beakD: 0xd96400,
+    foot: 0xffa01a, hatBand: 0xffd84a, sky: 0x88d3ee, ground: 0x6ab843,
+    outline: 0x3a2200, sleeve: 0x1f6fd9, hand: 0xffd6a8,
+  };
+  const DUCK_SCALE = 0.5;          // visual scale of duck + hand (1.0 = original; 0.5 = half size)
+  const PLUCK_CD = 230;
+  const TENSION_PER_PLUCK = 0.16;
+  const TENSION_DECAY = 0.55;
+  const TENSION_SAFE = 0.5;
+  const TENSION_BITE_GAIN = 1.9;
+  const GOLDEN_CHANCE = 0.02;
+  const EATING_ANGRY_CHANCE_BASE = 0.6;
+
+  // ============================================================
+  // RENDERER / SCENE / CAMERA / LIGHTS / GROUND
+  // ============================================================
+  const canvas = document.getElementById('game');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(COL.sky);
+  scene.fog = new THREE.Fog(COL.sky, 16, 36);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+  camera.position.set(0, 2.6, 6.8);
+  camera.lookAt(0, 1.2 * DUCK_SCALE, 0);
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Lights
+  scene.add(new THREE.HemisphereLight(0xb1deff, 0x88aa55, 0.7));
+  const sun = new THREE.DirectionalLight(0xfff0d0, 1.05);
+  sun.position.set(6, 10, 4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  const sd = 8;
+  sun.shadow.camera.left = -sd; sun.shadow.camera.right = sd;
+  sun.shadow.camera.top = sd; sun.shadow.camera.bottom = -sd;
+  sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 30;
+  sun.shadow.bias = -0.0005;
+  scene.add(sun);
+
+  // Ground
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshStandardMaterial({ color: COL.ground, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // A few cloud puffs (decorative)
+  {
+    const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.95 });
+    for (let i = 0; i < 8; i++) {
+      const c = new THREE.Group();
+      for (let j = 0; j < 4; j++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.6 + Math.random()*0.6, 12, 8), cloudMat);
+        m.position.set((Math.random()-0.5)*1.4, (Math.random()-0.5)*0.3, (Math.random()-0.5)*1.0);
+        c.add(m);
+      }
+      c.position.set((Math.random()-0.5)*30, 6 + Math.random()*4, -8 - Math.random()*8);
+      scene.add(c);
+    }
+  }
+
+  // ============================================================
+  // SHARED MATERIALS
+  // ============================================================
+  const M = {
+    body:    new THREE.MeshStandardMaterial({ color: COL.body, roughness: 0.65 }),
+    shirt:   new THREE.MeshStandardMaterial({ color: COL.shirt, roughness: 0.55 }),
+    bow:     new THREE.MeshStandardMaterial({ color: COL.bow, roughness: 0.5 }),
+    beak:    new THREE.MeshStandardMaterial({ color: COL.beak, roughness: 0.4 }),
+    beakD:   new THREE.MeshStandardMaterial({ color: COL.beakD, roughness: 0.5 }),
+    foot:    new THREE.MeshStandardMaterial({ color: COL.foot, roughness: 0.5 }),
+    hatBand: new THREE.MeshStandardMaterial({ color: COL.hatBand, roughness: 0.4 }),
+    white:   new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }),
+    pupilNormal: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4 }),
+    pupilAngry:  new THREE.MeshStandardMaterial({ color: 0xc40000, roughness: 0.4 }),
+    eyebrow: new THREE.MeshStandardMaterial({ color: COL.outline }),
+    glint: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    sleeve: new THREE.MeshStandardMaterial({ color: COL.sleeve, roughness: 0.55 }),
+    hand: new THREE.MeshStandardMaterial({ color: COL.hand, roughness: 0.6 }),
+    crumb: new THREE.MeshStandardMaterial({ color: 0x7a4e1c, roughness: 1 }),
+    feather: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 }),
+    feeatherGold: new THREE.MeshStandardMaterial({ color: 0xffd84a, roughness: 0.4, emissive: 0x553300, emissiveIntensity: 0.3 }),
+  };
+
+  // ============================================================
+  // DUCK MODEL (procedural)
+  // ============================================================
+  function buildDuck() {
+    const root = new THREE.Group();
+    root.position.set(0, 0, 0);
+
+    // ----- BODY (egg-shaped) -----
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.8, 32, 24), M.body);
+    body.scale.set(1.0, 0.95, 1.25);
+    body.position.y = 1.05;
+    body.castShadow = true; body.receiveShadow = true;
+    root.add(body);
+
+    // Tail group — at back of body (positive Z)
+    const tailGroup = new THREE.Group();
+    tailGroup.position.set(0, 1.18, 0.95);
+    root.add(tailGroup);
+
+    // Tail base blob
+    const tailBase = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), M.body);
+    tailBase.scale.set(1.1, 0.9, 0.8);
+    tailBase.castShadow = true;
+    tailGroup.add(tailBase);
+
+    // Tail fan: cone-shaped feathers
+    const tailFanGroup = new THREE.Group();
+    tailGroup.add(tailFanGroup);
+    {
+      const fans = [
+        { ax: -0.6, ay: 0.0,  az: 0.2, tilt: -0.4 },
+        { ax: -0.2, ay: 0.25, az: 0.0, tilt: -0.15 },
+        { ax: 0.2,  ay: 0.25, az: 0.0, tilt: 0.15 },
+        { ax: 0.6,  ay: 0.0,  az: 0.2, tilt: 0.4 },
+      ];
+      for (const f of fans) {
+        const feather = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.32, 8), M.body);
+        feather.castShadow = true;
+        // Move pivot to base then translate up
+        feather.position.set(f.ax * 0.18, 0.1 + f.ay * 0.15, f.az * 0.1);
+        feather.rotation.z = f.tilt;
+        feather.rotation.x = -0.4 + f.az * 0.5;
+        tailFanGroup.add(feather);
+      }
+    }
+
+    // ----- SAILOR SHIRT (front-upper of body) -----
+    const shirtGeo = new THREE.SphereGeometry(0.82, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    const shirt = new THREE.Mesh(shirtGeo, M.shirt);
+    shirt.scale.set(1.0, 0.95, 1.25);
+    shirt.position.y = 1.05;
+    shirt.castShadow = true;
+    root.add(shirt);
+
+    // Bow tie under chin
+    const bowGroup = new THREE.Group();
+    bowGroup.position.set(0, 1.45, -0.55);
+    root.add(bowGroup);
+    // Two cone wings + center knot
+    {
+      const wingGeo = new THREE.ConeGeometry(0.16, 0.22, 8);
+      const lWing = new THREE.Mesh(wingGeo, M.bow);
+      lWing.rotation.z = -Math.PI / 2;
+      lWing.position.x = -0.12;
+      lWing.castShadow = true;
+      bowGroup.add(lWing);
+      const rWing = new THREE.Mesh(wingGeo, M.bow);
+      rWing.rotation.z = Math.PI / 2;
+      rWing.position.x = 0.12;
+      rWing.castShadow = true;
+      bowGroup.add(rWing);
+      const knot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), new THREE.MeshStandardMaterial({ color: COL.bowD }));
+      bowGroup.add(knot);
+    }
+
+    // Sailor collar — flat curved plate at top-back of body
+    {
+      const collarGeo = new THREE.TorusGeometry(0.45, 0.07, 4, 14, Math.PI * 1.1);
+      const collar = new THREE.Mesh(collarGeo, M.white);
+      collar.rotation.x = Math.PI / 2;
+      collar.rotation.z = Math.PI;
+      collar.position.set(0, 1.55, -0.05);
+      collar.castShadow = true;
+      root.add(collar);
+    }
+
+    // Wings (sleeves)
+    for (const sgn of [-1, 1]) {
+      const wingGroup = new THREE.Group();
+      wingGroup.position.set(sgn * 0.7, 1.15, -0.05);
+      root.add(wingGroup);
+      const sleeve = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), M.sleeve);
+      sleeve.scale.set(0.7, 0.85, 1.15);
+      sleeve.castShadow = true;
+      wingGroup.add(sleeve);
+      // Small white "hand" at end of sleeve
+      const wHand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), M.body);
+      wHand.position.set(sgn * 0.05, -0.22, 0.12);
+      wHand.castShadow = true;
+      wingGroup.add(wHand);
+    }
+
+    // ----- LEGS (each is a Group anchored under body) -----
+    const baseLegY = 0.78;
+    function buildLeg(xOff) {
+      const leg = new THREE.Group();
+      leg.position.set(xOff, baseLegY, 0);
+      // Leg cylinder
+      const legShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.45, 10), M.foot);
+      legShaft.position.y = -0.22;
+      legShaft.castShadow = true;
+      leg.add(legShaft);
+      // Webbed foot (flattened sphere)
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), M.foot);
+      foot.scale.set(1.0, 0.32, 1.6);
+      foot.position.set(0, -0.45, -0.08);
+      foot.castShadow = true;
+      leg.add(foot);
+      return leg;
+    }
+    const legL = buildLeg(-0.22);
+    const legR = buildLeg(0.22);
+    root.add(legL);
+    root.add(legR);
+
+    // ----- HEAD GROUP (rotates for look at camera) -----
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.85, -0.45);
+    root.add(headGroup);
+
+    // Head sphere
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 24, 20), M.body);
+    head.castShadow = true; head.receiveShadow = true;
+    headGroup.add(head);
+
+    // Eyes (white + pupils)
+    const eyes = []; // [{whiteMesh, pupilMesh, glintMesh, sgn}]
+    for (const sgn of [-1, 1]) {
+      const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), M.white);
+      eyeWhite.scale.set(0.95, 1.05, 0.7);
+      eyeWhite.position.set(sgn * 0.20, 0.10, -0.36);
+      headGroup.add(eyeWhite);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), M.pupilNormal);
+      pupil.position.set(sgn * 0.18, 0.09, -0.46);
+      headGroup.add(pupil);
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), M.glint);
+      glint.position.set(sgn * 0.16, 0.13, -0.49);
+      headGroup.add(glint);
+      eyes.push({ eyeWhite, pupil, glint, sgn });
+    }
+    // Eyebrows (only visible when angry — start hidden)
+    const eyebrows = [];
+    for (const sgn of [-1, 1]) {
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.04), M.eyebrow);
+      brow.position.set(sgn * 0.22, 0.27, -0.38);
+      brow.rotation.z = sgn * -0.45;
+      brow.visible = false;
+      headGroup.add(brow);
+      eyebrows.push(brow);
+    }
+
+    // Beak — upper (fixed on head) + lower (rotates for mouth open)
+    const beakUpper = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 12), M.beak);
+    beakUpper.scale.set(1.0, 0.55, 1.1);
+    beakUpper.position.set(0, -0.07, -0.55);
+    beakUpper.castShadow = true;
+    headGroup.add(beakUpper);
+
+    const beakLowerGroup = new THREE.Group();
+    beakLowerGroup.position.set(0, -0.07, -0.30); // hinge
+    headGroup.add(beakLowerGroup);
+    const beakLower = new THREE.Mesh(new THREE.SphereGeometry(0.24, 18, 12), M.beakD);
+    beakLower.scale.set(0.95, 0.42, 1.0);
+    beakLower.position.set(0, -0.06, -0.26); // forward of hinge
+    beakLower.castShadow = true;
+    beakLowerGroup.add(beakLower);
+
+    // Nostrils (small dark dots on top of upper beak)
+    for (const sgn of [-1, 1]) {
+      const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), M.eyebrow);
+      nostril.position.set(sgn * 0.07, -0.0, -0.71);
+      headGroup.add(nostril);
+    }
+
+    // Tongue (visible when mouth open)
+    const tongue = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), new THREE.MeshStandardMaterial({ color: 0xd2466a }));
+    tongue.scale.set(0.9, 0.3, 0.7);
+    tongue.position.set(0, -0.08, -0.25);
+    tongue.visible = false;
+    beakLowerGroup.add(tongue);
+
+    // Hat (on top of head, follows head rotation)
+    const hatGroup = new THREE.Group();
+    hatGroup.position.set(0, 0.36, -0.05);
+    headGroup.add(hatGroup);
+    {
+      // Brim (cylinder, very low)
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.07, 24), M.shirt);
+      brim.position.y = 0;
+      brim.castShadow = true;
+      hatGroup.add(brim);
+      // Yellow band
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.022, 6, 24), M.hatBand);
+      band.rotation.x = Math.PI / 2;
+      band.position.y = 0.02;
+      hatGroup.add(band);
+      // Dome (half sphere)
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.4, 24, 18, 0, Math.PI * 2, 0, Math.PI / 2), M.shirt);
+      dome.position.y = 0.04;
+      dome.castShadow = true;
+      hatGroup.add(dome);
+      // Ribbon (flat box trailing back)
+      const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.32, 0.04), M.bow);
+      ribbon.position.set(0, -0.05, 0.42);
+      ribbon.rotation.x = -0.2;
+      ribbon.castShadow = true;
+      hatGroup.add(ribbon);
+    }
+
+    // ----- PLUCKABLE FEATHERS (positioned on back/rump in body-local coords) -----
+    const featherMeshes = [];
+    {
+      const positions = [
+        // Back feathers (rump area)
+        { x:  0.0,  y: 1.55, z:  0.65 }, { x:  0.25, y: 1.50, z:  0.55 },
+        { x: -0.25, y: 1.50, z:  0.55 }, { x:  0.4,  y: 1.40, z:  0.40 },
+        { x: -0.4,  y: 1.40, z:  0.40 }, { x:  0.15, y: 1.35, z:  0.75 },
+        { x: -0.15, y: 1.35, z:  0.75 }, { x:  0.0,  y: 1.60, z:  0.30 },
+        { x:  0.5,  y: 1.20, z:  0.55 }, { x: -0.5,  y: 1.20, z:  0.55 },
+        // Lower belly/sides
+        { x:  0.55, y: 0.95, z:  0.20 }, { x: -0.55, y: 0.95, z:  0.20 },
+        { x:  0.5,  y: 0.85, z:  0.50 }, { x: -0.5,  y: 0.85, z:  0.50 },
+        { x:  0.3,  y: 0.80, z:  0.75 }, { x: -0.3,  y: 0.80, z:  0.75 },
+      ];
+      const featherGeo = new THREE.SphereGeometry(0.08, 8, 6);
+      for (const p of positions) {
+        const f = new THREE.Mesh(featherGeo, M.feather);
+        f.scale.set(0.7, 1.4, 0.5);
+        f.position.set(p.x, p.y, p.z);
+        // Random tilt
+        f.rotation.set(
+          (Math.random() - 0.5) * 0.4,
+          (Math.random() - 0.5) * 0.6,
+          (Math.random() - 0.5) * 0.6
+        );
+        f.castShadow = true;
+        f.userData.plucked = false;
+        f.userData.basePos = f.position.clone();
+        f.userData.baseRot = f.rotation.clone();
+        root.add(f);
+        featherMeshes.push(f);
+      }
+    }
+
+    // ----- CRUMBS (visible during eating) -----
+    const crumbsGroup = new THREE.Group();
+    crumbsGroup.visible = false;
+    root.add(crumbsGroup);
+    {
+      const crumbGeo = new THREE.SphereGeometry(0.05, 6, 5);
+      const ccoords = [
+        [-0.10, -0.85], [0.15, -0.95], [-0.05, -1.05], [0.25, -0.80],
+        [-0.20, -0.75], [0.05, -0.70],
+      ];
+      for (const [x, z] of ccoords) {
+        const c = new THREE.Mesh(crumbGeo, M.crumb);
+        c.position.set(x, 0.05, z); // on ground in body-local coords
+        c.castShadow = true;
+        crumbsGroup.add(c);
+      }
+    }
+
+    // Anger-steam puffs (we'll show/hide a small group of spheres above the head)
+    const steamGroup = new THREE.Group();
+    steamGroup.visible = false;
+    root.add(steamGroup);
+    {
+      const steamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.7 });
+      for (let i = 0; i < 3; i++) {
+        const p = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), steamMat);
+        p.userData.i = i;
+        steamGroup.add(p);
+      }
+    }
+
+    // Suspicious "!" sprite
+    const exMaterial = new THREE.SpriteMaterial({ map: makeExclamationTexture() });
+    const exSprite = new THREE.Sprite(exMaterial);
+    exSprite.scale.set(0.6, 0.8, 1);
+    exSprite.position.set(0, 2.85, -0.45);
+    exSprite.visible = false;
+    root.add(exSprite);
+
+    return {
+      root,
+      body, head, headGroup, hatGroup,
+      bowGroup,
+      tailGroup, tailFanGroup,
+      beakUpper, beakLowerGroup, tongue,
+      legL, legR, baseLegY,
+      eyes, eyebrows,
+      featherMeshes,
+      crumbsGroup,
+      steamGroup,
+      exSprite,
+    };
+  }
+
+  function makeExclamationTexture() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 192;
+    const ctx2d = c.getContext('2d');
+    ctx2d.font = 'bold 160px Comic Sans MS, sans-serif';
+    ctx2d.textAlign = 'center'; ctx2d.textBaseline = 'middle';
+    ctx2d.lineWidth = 12; ctx2d.strokeStyle = '#fff';
+    ctx2d.strokeText('!', 64, 96);
+    ctx2d.fillStyle = '#ff3030';
+    ctx2d.fillText('!', 64, 96);
+    const t = new THREE.CanvasTexture(c);
+    return t;
+  }
+
+  // ============================================================
+  // HAND CURSOR (3D mesh that follows mouse)
+  // ============================================================
+  function buildHand() {
+    // For Object3D.lookAt(target), local +Z is rotated to face the target. So the hand's reach
+    // direction is built along +Z: cuff at -Z (toward the camera), palm in the middle, four
+    // fingers + thumb extending into +Z (toward the duck after lookAt).
+    const g = new THREE.Group();
+
+    // Cuff/wrist BEHIND the fist (away from the duck after lookAt)
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.32, 14), M.sleeve);
+    cuff.rotation.x = Math.PI / 2;
+    cuff.position.z = -0.32;
+    cuff.castShadow = true;
+    g.add(cuff);
+
+    // Palm
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 14), M.hand);
+    palm.scale.set(1.30, 0.85, 0.95);
+    palm.position.z = -0.04;
+    palm.castShadow = true;
+    g.add(palm);
+
+    // Knuckle row at the front of the palm
+    const knuckle = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 10), M.hand);
+    knuckle.scale.set(2.4, 0.55, 0.55);
+    knuckle.position.set(0, 0.06, 0.10);
+    knuckle.castShadow = true;
+    g.add(knuckle);
+
+    // Four fingers extending in +Z direction (toward the duck after lookAt).
+    // Anatomically: middle finger longest, then index/ring, pinky shortest.
+    const fingerSpecs = [
+      { x: -0.21, len: 0.28, label: 'pinky'  },
+      { x: -0.07, len: 0.34, label: 'ring'   },
+      { x:  0.07, len: 0.38, label: 'middle' },
+      { x:  0.21, len: 0.34, label: 'index'  },
+    ];
+    for (const f of fingerSpecs) {
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.052, f.len, 10), M.hand);
+      cyl.rotation.x = Math.PI / 2;            // axis +Z
+      cyl.position.set(f.x, 0.06, 0.10 + f.len / 2);
+      cyl.castShadow = true;
+      g.add(cyl);
+      // Rounded fingertip
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), M.hand);
+      tip.position.set(f.x, 0.06, 0.10 + f.len);
+      tip.castShadow = true;
+      g.add(tip);
+    }
+
+    // Thumb — sticking out to +X side and slightly forward
+    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.26, 10), M.hand);
+    thumb.rotation.z = -Math.PI / 2;           // axis +X
+    thumb.rotation.y = -0.4;                   // angled slightly forward
+    thumb.position.set(0.28, -0.05, 0.02);
+    thumb.castShadow = true;
+    g.add(thumb);
+    // Thumb tip
+    const thumbTip = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), M.hand);
+    thumbTip.position.set(0.40, -0.04, 0.10);
+    thumbTip.castShadow = true;
+    g.add(thumbTip);
+
+    return g;
+  }
+
+  // ============================================================
+  // BUILD WORLD
+  // ============================================================
+  const duck = buildDuck();
+  duck.root.scale.setScalar(DUCK_SCALE);
+  scene.add(duck.root);
+
+  const hand = buildHand();
+  hand.scale.setScalar(DUCK_SCALE);
+  scene.add(hand);
+
+  // ============================================================
+  // AUDIO
+  // ============================================================
+  let audioCtx = null;
+  let soundOn = true;
+  function ac() {
+    if (!audioCtx) try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  const audioFiles = { pluck: 'plucking.wav', angry: 'duck-angry.mp3', lose: 'lose.wav' };
+  const audioPool = {};
+  for (const [k, v] of Object.entries(audioFiles)) {
+    const a = new Audio(v);
+    a.preload = 'auto';
+    audioPool[k] = a;
+  }
+  function playFile(name, volume = 0.7) {
+    if (!soundOn) return null;
+    const base = audioPool[name]; if (!base) return null;
+    const a = base.cloneNode(); a.volume = volume;
+    a.play().catch(() => {});
+    return a;
+  }
+  function blip(opts) {
+    if (!soundOn) return;
+    const c = ac(); if (!c) return;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = opts.type || 'square';
+    o.frequency.setValueAtTime(opts.f0, t);
+    if (opts.f1 != null) {
+      if (opts.curve === 'exp') o.frequency.exponentialRampToValueAtTime(Math.max(1, opts.f1), t + opts.dur);
+      else o.frequency.linearRampToValueAtTime(opts.f1, t + opts.dur);
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(opts.vol || 0.2, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + opts.dur + 0.02);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + opts.dur + 0.05);
+  }
+  let angrySoundInstance = null;
+  function stopAngrySound() {
+    if (angrySoundInstance) {
+      try { angrySoundInstance.pause(); angrySoundInstance.currentTime = 0; } catch(e) {}
+      angrySoundInstance = null;
+    }
+  }
+  const SFX = {
+    pluck() { playFile('pluck', 0.7); },
+    alert() { blip({ type:'sawtooth', f0: 320, f1: 880, dur: 0.28, vol: 0.22 }); },
+    bite()  { playFile('lose', 0.85); },
+    angry() { stopAngrySound(); angrySoundInstance = playFile('angry', 0.8); },
+  };
+
+  // ============================================================
+  // GAME STATE
+  // ============================================================
+  const STATE = { TITLE:'title', PLAYING:'playing', OVER:'over' };
+  const DSTATE = { IDLE:'idle', EATING:'eating', SUSPICIOUS:'suspicious', ANGRY:'angry', ATTACK:'attack' };
+
+  const game = {
+    state: STATE.TITLE,
+    score: 0,
+    hiscore: parseInt(localStorage.getItem('pluckHi3d') || '0', 10),
+    shake: 0, flash: 0, timeMs: 0,
+    tension: 0, paused: false, goldenBoost: 0,
+  };
+
+  const dstate = {
+    s: DSTATE.IDLE,
+    look: 0, lookTarget: 0,
+    breath: 0, blinkT: 0, nextBlink: 2,
+    reactionTimer: 2500,
+    susTimer: 0, angryTimer: 0, attackTimer: 0, attackLunge: 0,
+    isFakeout: false,
+    walkTarget: null, walkPhase: 0, walkPauseTimer: 0, walkSpeed: 0,
+    bodyRot: 0, bodyRotTarget: 0,
+    eatTimer: 0, eatPhase: 0, eatDip: 0,
+    reactionMouth: 0, tailShake: 0,
+  };
+
+  // ============================================================
+  // DIFFICULTY
+  // ============================================================
+  function reactionRange() {
+    const s = game.score;
+    const min = Math.max(380, 2000 - s * 35);
+    const max = Math.max(800, 4200 - s * 60);
+    const factor = 1 / (1 + game.goldenBoost * 0.25);
+    return [min * factor, max * factor];
+  }
+  function suspiciousWindow() {
+    const base = Math.max(420, 1300 - game.score * 22);
+    return base / (1 + game.goldenBoost * 0.2);
+  }
+  function fakeoutChance() {
+    return Math.max(0.03, 0.5 - game.score * 0.018 - game.goldenBoost * 0.1);
+  }
+  function idleSkipToAngryChance() {
+    return Math.min(0.9, game.score * 0.006 + game.goldenBoost * 0.15);
+  }
+  function eatingSkipToAngryChance() {
+    return Math.min(0.95, EATING_ANGRY_CHANCE_BASE + game.score * 0.004 + game.goldenBoost * 0.1);
+  }
+  function rollReactionTimer() {
+    const [a, b] = reactionRange();
+    dstate.reactionTimer = a + Math.random() * (b - a);
+  }
+
+  // ============================================================
+  // STATE TRANSITIONS
+  // ============================================================
+  function setDuckIdle() {
+    stopAngrySound();
+    dstate.s = DSTATE.IDLE;
+    dstate.lookTarget = 0;
+    dstate.walkTarget = null;
+    dstate.walkPauseTimer = 0.4 + Math.random() * 0.7;
+    rollReactionTimer();
+  }
+  function setDuckEating() {
+    dstate.s = DSTATE.EATING;
+    dstate.lookTarget = 0;
+    dstate.walkTarget = null;
+    dstate.eatTimer = 1800 + Math.random() * 2800;
+    dstate.eatPhase = 0;
+  }
+  function setDuckSuspicious(fromEating = false) {
+    dstate.s = DSTATE.SUSPICIOUS;
+    dstate.lookTarget = 1;
+    dstate.susTimer = suspiciousWindow();
+    const baseFakeout = fakeoutChance();
+    dstate.isFakeout = Math.random() < (fromEating ? Math.min(baseFakeout, 0.4) : baseFakeout);
+    SFX.alert();
+  }
+  function setDuckAngry() {
+    dstate.s = DSTATE.ANGRY;
+    dstate.lookTarget = 1;
+    dstate.angryTimer = 700 + Math.random() * 400;
+    SFX.angry();
+  }
+  function startAttack() {
+    stopAngrySound();
+    dstate.s = DSTATE.ATTACK;
+    dstate.lookTarget = 1;
+    dstate.attackTimer = 520;
+    dstate.attackLunge = 0;
+    SFX.bite();
+    game.shake = 0.35; game.flash = 1;
+  }
+
+  // ============================================================
+  // WANDERING
+  // ============================================================
+  const WALK_BOUNDS = { minX: -3.0, maxX: 3.0, minZ: -1.5, maxZ: 1.5 };
+  function pickWalkTarget() {
+    const b = WALK_BOUNDS;
+    dstate.walkTarget = {
+      x: b.minX + Math.random() * (b.maxX - b.minX),
+      z: b.minZ + Math.random() * (b.maxZ - b.minZ),
+    };
+    const dx = dstate.walkTarget.x - duck.root.position.x;
+    const dz = dstate.walkTarget.z - duck.root.position.z;
+    if (dx * dx + dz * dz > 0.04) {
+      // Duck's local forward is -Z, so the body rotation that aligns -Z with (dx,dz) is atan2(-dx,-dz).
+      dstate.bodyRotTarget = Math.atan2(-dx, -dz);
+    }
+  }
+
+  // ============================================================
+  // INPUT / RAYCAST
+  // ============================================================
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  let pointerScreen = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  function setPointer(cx, cy) {
+    pointerScreen.x = cx; pointerScreen.y = cy;
+    ndc.x = (cx / window.innerWidth) * 2 - 1;
+    ndc.y = -(cy / window.innerHeight) * 2 + 1;
+  }
+  window.addEventListener('mousemove', e => setPointer(e.clientX, e.clientY));
+  window.addEventListener('touchmove', e => { if (e.touches[0]) setPointer(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+  window.addEventListener('mousedown', e => { setPointer(e.clientX, e.clientY); tryPluck(); });
+  window.addEventListener('touchstart', e => {
+    if (e.touches[0]) { setPointer(e.touches[0].clientX, e.touches[0].clientY); tryPluck(); }
+  }, { passive: true });
+
+  // ============================================================
+  // PLUCK
+  // ============================================================
+  let lastPluck = 0;
+
+  function tryPluck() {
+    if (game.state !== STATE.PLAYING) return;
+    if (game.paused) return;
+    if (dstate.s === DSTATE.ATTACK) return;
+
+    raycaster.setFromCamera(ndc, camera);
+
+    // Did the ray hit the duck (any of: body, head, feathers)?
+    const hitTargets = [duck.body, duck.head, ...duck.featherMeshes.filter(f => !f.userData.plucked)];
+    const hits = raycaster.intersectObjects(hitTargets, false);
+    if (hits.length === 0) return; // missed the duck
+
+    const hitPoint = hits[0].point;
+
+    // Reaching while duck is watching → BITE
+    if (dstate.s === DSTATE.SUSPICIOUS || dstate.s === DSTATE.ANGRY) {
+      startAttack();
+      return;
+    }
+
+    // Cooldown
+    const now = performance.now();
+    if (now - lastPluck < PLUCK_CD) return;
+    lastPluck = now;
+
+    // Tension-based bite chance for greedy plucking (pre-roll BEFORE tension increment)
+    const biteChance = Math.max(0, game.tension - TENSION_SAFE) * TENSION_BITE_GAIN;
+    if (Math.random() < biteChance) {
+      dstate.look = 1; dstate.lookTarget = 1;
+      startAttack();
+      return;
+    }
+    game.tension = Math.min(1, game.tension + TENSION_PER_PLUCK);
+
+    // Find nearest unplucked feather in 3D
+    let best = null, bestD = Infinity;
+    for (const f of duck.featherMeshes) {
+      if (f.userData.plucked) continue;
+      // World position of the feather
+      const wp = new THREE.Vector3();
+      f.getWorldPosition(wp);
+      const d = wp.distanceTo(hitPoint);
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    if (!best) {
+      // No feathers left? Replenish so the game keeps going.
+      for (const f of duck.featherMeshes) {
+        f.userData.plucked = false;
+        f.position.copy(f.userData.basePos);
+        f.rotation.copy(f.userData.baseRot);
+        f.visible = true;
+      }
+      best = duck.featherMeshes[0];
+    }
+
+    // Pluck it!
+    best.userData.plucked = true;
+
+    const fwp = new THREE.Vector3();
+    best.getWorldPosition(fwp);
+
+    const isGolden = Math.random() < GOLDEN_CHANCE;
+    if (isGolden) {
+      best.material = M.feeatherGold;
+      spawnFeatherFly(best, fwp, true);
+      spawnGoldSparkles(fwp);
+    } else {
+      spawnFeatherFly(best, fwp, false);
+    }
+    spawnPluckPuffs(fwp);
+
+    game.score++;
+    document.getElementById('score').textContent = game.score;
+    SFX.pluck();
+    dstate.reactionMouth = 1;
+    dstate.tailShake = 1;
+
+    if (isGolden) {
+      game.paused = true;
+      setTimeout(showGoldenPopup, 380);
+    }
+
+    // Greedy plucking accelerates the duck's reaction
+    dstate.reactionTimer -= 180 + Math.random() * 220;
+  }
+
+  // ============================================================
+  // PARTICLES (3D meshes with simple physics)
+  // ============================================================
+  const particles = [];
+  const pluckPuffMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, transparent: true });
+  const goldSparkMat = new THREE.MeshBasicMaterial({ color: 0xffd84a, transparent: true });
+  const bitePuffMat = new THREE.MeshBasicMaterial({ color: 0xff5252, transparent: true });
+
+  function spawnPluckPuffs(worldPos) {
+    for (let i = 0; i < 5; i++) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 5), pluckPuffMat.clone());
+      m.position.copy(worldPos);
+      const dir = new THREE.Vector3((Math.random()-0.5)*1.5, Math.random()*1.2 + 0.4, (Math.random()-0.5)*1.5).normalize();
+      const speed = 1.6 + Math.random() * 1.0;
+      const v = dir.multiplyScalar(speed);
+      scene.add(m);
+      particles.push({ m, v, ay: -3, life: 0.5, maxLife: 0.5, kind: 'puff' });
+    }
+  }
+  function spawnFeatherFly(featherMesh, worldPos, isGolden) {
+    // Detach feather from duck root and re-parent to scene so it doesn't move with duck
+    const m = featherMesh;
+    scene.attach(m); // preserves world transform
+    const v = new THREE.Vector3((Math.random()-0.5)*1.2, 1.6 + Math.random() * 0.8, 0.4 + Math.random() * 0.6);
+    const av = new THREE.Vector3(Math.random()*8 - 4, Math.random()*8 - 4, Math.random()*8 - 4);
+    particles.push({ m, v, ay: -3.5, life: 1.4, maxLife: 1.4, kind: 'feather', av, fadeStart: 1.0 });
+  }
+  function spawnGoldSparkles(worldPos) {
+    for (let i = 0; i < 14; i++) {
+      const geo = new THREE.OctahedronGeometry(0.06);
+      const mat = goldSparkMat.clone();
+      const m = new THREE.Mesh(geo, mat);
+      m.position.copy(worldPos);
+      const dir = new THREE.Vector3((Math.random()-0.5)*2, Math.random()*1.4 + 0.6, (Math.random()-0.5)*2).normalize();
+      const v = dir.multiplyScalar(2.0 + Math.random() * 1.5);
+      const av = new THREE.Vector3(Math.random()*6, Math.random()*6, Math.random()*6);
+      scene.add(m);
+      particles.push({ m, v, ay: -2.5, life: 1.0, maxLife: 1.0, kind: 'sparkle', av });
+    }
+  }
+  function spawnBitePuffs(worldPos) {
+    for (let i = 0; i < 12; i++) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), bitePuffMat.clone());
+      m.position.copy(worldPos);
+      const dir = new THREE.Vector3((Math.random()-0.5)*2, Math.random()*1.5, (Math.random()-0.5)*2).normalize();
+      const v = dir.multiplyScalar(2.5 + Math.random() * 2.0);
+      scene.add(m);
+      particles.push({ m, v, ay: -3, life: 0.65, maxLife: 0.65, kind: 'bite' });
+    }
+  }
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.m.position.addScaledVector(p.v, dt);
+      p.v.y += p.ay * dt;
+      if (p.av) p.m.rotation.set(
+        p.m.rotation.x + p.av.x * dt,
+        p.m.rotation.y + p.av.y * dt,
+        p.m.rotation.z + p.av.z * dt
+      );
+      p.life -= dt;
+      const alpha = Math.max(0, Math.min(1, p.life / (p.fadeStart || p.maxLife)));
+      if (p.m.material && p.m.material.opacity !== undefined) p.m.material.opacity = alpha;
+      if (p.life <= 0 || p.m.position.y < -2) {
+        scene.remove(p.m);
+        if (p.kind !== 'feather') {
+          // Feather meshes are reused on restart; only dispose the throwaway particles.
+          if (p.m.geometry && p.m.geometry.dispose) p.m.geometry.dispose();
+          if (p.m.material && p.m.material.dispose) p.m.material.dispose();
+        } else {
+          p.m.visible = false;
+        }
+        particles.splice(i, 1);
+      }
+    }
+  }
+
+  // ============================================================
+  // GAME / DUCK UPDATE
+  // ============================================================
+  function shortAngle(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; }
+
+  function update(dt) {
+    game.timeMs += dt * 1000;
+    const ms = dt * 1000;
+
+    // Smooth global head turn
+    dstate.look += (dstate.lookTarget - dstate.look) * Math.min(1, dt * 12);
+
+    // Pluck reactions decay
+    dstate.reactionMouth = Math.max(0, dstate.reactionMouth - dt * 4);
+    dstate.tailShake = Math.max(0, dstate.tailShake - dt * 3);
+
+    // Breath / blink
+    dstate.breath += dt;
+    dstate.blinkT -= dt; dstate.nextBlink -= dt;
+    if (dstate.nextBlink < 0 && dstate.blinkT < 0) {
+      dstate.blinkT = 0.13; dstate.nextBlink = 2 + Math.random() * 3;
+    }
+
+    // Shake/flash decay
+    game.shake *= Math.pow(0.001, dt);
+    game.flash = Math.max(0, game.flash - dt * 1.5);
+
+    // Tension cool-down (when not paused/playing)
+    if (game.state === STATE.PLAYING && !game.paused) {
+      game.tension = Math.max(0, game.tension - TENSION_DECAY * dt);
+    }
+
+    // Walking + state machine
+    if (game.state === STATE.PLAYING && !game.paused) {
+      const walking = dstate.s === DSTATE.IDLE && dstate.walkPauseTimer <= 0 && dstate.walkTarget;
+      if (dstate.s === DSTATE.IDLE) {
+        if (dstate.walkPauseTimer > 0) dstate.walkPauseTimer -= dt;
+        else {
+          if (!dstate.walkTarget) pickWalkTarget();
+          const dx = dstate.walkTarget.x - duck.root.position.x;
+          const dz = dstate.walkTarget.z - duck.root.position.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 0.15) {
+            dstate.walkTarget = null;
+            if (Math.random() < 0.4) setDuckEating();
+            else dstate.walkPauseTimer = 0.6 + Math.random() * 1.5;
+          } else {
+            const speed = 1.5;
+            duck.root.position.x += (dx / dist) * speed * dt;
+            duck.root.position.z += (dz / dist) * speed * dt;
+            dstate.walkPhase = (dstate.walkPhase + dt * 2.5) % 1;
+            dstate.bodyRotTarget = Math.atan2(-dx, -dz);
+          }
+        }
+      } else {
+        // Not idle → don't walk, drift legs back to neutral
+        dstate.walkTarget = null;
+        dstate.walkPhase += (0 - dstate.walkPhase) * Math.min(1, dt * 8);
+      }
+      const walkSpeedTarget = walking ? 1 : 0;
+      dstate.walkSpeed += (walkSpeedTarget - dstate.walkSpeed) * Math.min(1, dt * 8);
+
+      // Eating peck cycle
+      let dipTarget = 0;
+      if (dstate.s === DSTATE.EATING) {
+        dstate.eatPhase += dt * 1.6;
+        const peck = dstate.eatPhase % 1;
+        if (peck < 0.4)      dipTarget = peck / 0.4;
+        else if (peck < 0.7) dipTarget = 1;
+        else                 dipTarget = (1 - peck) / 0.3;
+      }
+      const dipSpeed = dstate.s === DSTATE.EATING ? 8 : 22;
+      dstate.eatDip += (dipTarget - dstate.eatDip) * Math.min(1, dt * dipSpeed);
+
+      // State-machine transitions
+      if (dstate.s === DSTATE.IDLE) {
+        dstate.reactionTimer -= ms;
+        if (dstate.reactionTimer <= 0) {
+          if (Math.random() < idleSkipToAngryChance()) setDuckAngry();
+          else setDuckSuspicious(false);
+        }
+      } else if (dstate.s === DSTATE.EATING) {
+        dstate.reactionTimer -= ms;
+        dstate.eatTimer -= ms;
+        if (dstate.reactionTimer <= 0) {
+          if (Math.random() < eatingSkipToAngryChance()) setDuckAngry();
+          else setDuckSuspicious(true);
+        } else if (dstate.eatTimer <= 0) setDuckIdle();
+      } else if (dstate.s === DSTATE.SUSPICIOUS) {
+        dstate.susTimer -= ms;
+        if (dstate.susTimer <= 0) {
+          if (dstate.isFakeout) setDuckIdle(); else setDuckAngry();
+        }
+      } else if (dstate.s === DSTATE.ANGRY) {
+        dstate.angryTimer -= ms;
+        if (dstate.angryTimer <= 0) setDuckIdle();
+      } else if (dstate.s === DSTATE.ATTACK) {
+        dstate.attackTimer -= ms;
+        const t = 1 - dstate.attackTimer / 520;
+        dstate.attackLunge = Math.sin(Math.min(1, t) * Math.PI);
+        if (dstate.attackTimer <= 360 && !dstate._bitePuffed) {
+          spawnBitePuffs(hand.position.clone());
+          dstate._bitePuffed = true;
+        }
+        if (dstate.attackTimer <= 0) endGame();
+      }
+    }
+
+    // ---------- TRANSFORMS ----------
+    // Body rotation toward target (shortest angle)
+    const rotDiff = shortAngle(dstate.bodyRotTarget - dstate.bodyRot);
+    dstate.bodyRot += rotDiff * Math.min(1, dt * 6);
+    duck.root.rotation.y = dstate.bodyRot;
+
+    // Body bob from walking + small breath
+    const bob = dstate.walkSpeed * Math.abs(Math.sin(dstate.walkPhase * Math.PI * 2)) * 0.06;
+    const breathBob = Math.sin(dstate.breath * 2) * 0.012;
+    duck.root.position.y = bob + breathBob;
+
+    // Legs animate
+    {
+      const stride = 0.18 * dstate.walkSpeed;
+      const lift   = 0.16 * dstate.walkSpeed;
+      const phaseL = dstate.walkPhase * Math.PI * 2;
+      const phaseR = phaseL + Math.PI;
+      duck.legL.position.z = -Math.cos(phaseL) * stride;
+      duck.legL.position.y = duck.baseLegY - Math.max(0, Math.sin(phaseL)) * lift;
+      duck.legR.position.z = -Math.cos(phaseR) * stride;
+      duck.legR.position.y = duck.baseLegY - Math.max(0, Math.sin(phaseR)) * lift;
+    }
+
+    // Head: combined look-at-camera turn + eating dip + lunge
+    {
+      const look = Math.max(0, Math.min(1, dstate.look));
+      // Duck's local forward is -Z, so the body rotation that turns it to face the camera is
+      // atan2(-(cam.x - duck.x), -(cam.z - duck.z)). The head's *local* rotation is that minus
+      // whatever the body is already rotated by.
+      const angleToCamera = Math.atan2(-(camera.position.x - duck.root.position.x), -(camera.position.z - duck.root.position.z));
+      const localTargetY = shortAngle(angleToCamera - dstate.bodyRot);
+      duck.headGroup.rotation.y = look * localTargetY;
+      // Slight upward tilt when looking at camera (camera is above duck)
+      const headWorldY = duck.root.position.y + 1.85 * DUCK_SCALE;
+      const upTilt = Math.atan2(camera.position.y - headWorldY, Math.hypot(camera.position.x - duck.root.position.x, camera.position.z - duck.root.position.z));
+      duck.headGroup.rotation.x = look * (-upTilt) + dstate.eatDip * 0.7;
+      // Eating extends the head forward (toward where the duck is facing = body-local -Z) and down
+      duck.headGroup.position.set(0, 1.85 - dstate.eatDip * 0.45, -0.45 - dstate.eatDip * 0.18);
+
+      // Attack lunge: head extends in the direction it's looking. At look=1 the head has just
+      // been rotated 180° around Y, so its "forward" is now body-local +Z (toward the camera).
+      if (dstate.s === DSTATE.ATTACK) {
+        const lunge = dstate.attackLunge * 0.55;
+        duck.headGroup.position.z += lunge;
+      }
+    }
+
+    // Mouth open: combine state beak open with reactionMouth
+    {
+      const stateOpen = (dstate.s === DSTATE.ATTACK ? 0.7 + dstate.attackLunge * 0.7 :
+                        dstate.s === DSTATE.ANGRY ? 0.18 + Math.sin(dstate.breath * 16) * 0.08 : 0);
+      const reactOpen = dstate.reactionMouth * 0.55;
+      const open = Math.max(stateOpen, reactOpen);
+      duck.beakLowerGroup.rotation.x = open * 0.7;
+      duck.tongue.visible = open > 0.3;
+    }
+
+    // Tail wiggle
+    {
+      const wiggle = Math.sin(game.timeMs * 0.06) * dstate.tailShake * 0.55;
+      duck.tailFanGroup.rotation.z = wiggle;
+    }
+
+    // Eyes / eyebrows by state
+    {
+      const angryEye = dstate.s === DSTATE.ANGRY || dstate.s === DSTATE.ATTACK;
+      const blinking = dstate.blinkT > 0 && !angryEye;
+      for (const e of duck.eyes) {
+        e.eyeWhite.visible = !blinking;
+        e.glint.visible = !blinking;
+        e.pupil.visible = !blinking;
+        e.pupil.material = angryEye ? M.pupilAngry : M.pupilNormal;
+      }
+      duck.eyebrows.forEach(b => b.visible = angryEye);
+      duck.steamGroup.visible = dstate.s === DSTATE.ANGRY;
+      duck.exSprite.visible = dstate.s === DSTATE.SUSPICIOUS;
+      // Ribbon visibility implicit (still part of hat)
+    }
+
+    // Steam puff animation
+    if (duck.steamGroup.visible) {
+      duck.steamGroup.children.forEach(p => {
+        const i = p.userData.i;
+        const t = ((game.timeMs * 0.001 + i * 0.4) % 1);
+        p.position.set(Math.sin(t * 6 + i) * 0.08 + 0.4, 2.6 + t * 0.6, -0.5);
+        p.scale.setScalar(1 - t * 0.6);
+        if (p.material) p.material.opacity = 0.7 * (1 - t);
+      });
+    }
+
+    // Suspicious "!"  bobbing
+    if (duck.exSprite.visible) {
+      duck.exSprite.position.set(0, 2.85 + Math.sin(game.timeMs * 0.012) * 0.06, -0.45);
+    }
+
+    // Crumbs visible during eating
+    duck.crumbsGroup.visible = dstate.eatDip > 0.05;
+
+    // Camera shake
+    {
+      const sx = (Math.random() - 0.5) * game.shake;
+      const sy = (Math.random() - 0.5) * game.shake;
+      camera.position.set(sx, 2.6 + sy, 6.8);
+      camera.lookAt(0, 1.2 * DUCK_SCALE, 0);
+    }
+
+    // Particles
+    updateParticles(dt);
+  }
+
+  // ============================================================
+  // HAND CURSOR POSITION
+  // ============================================================
+  function updateHand() {
+    // Hide the 3D hand whenever an overlay (title / game-over / golden popup) is showing,
+    // so the OS cursor can be used to click the buttons.
+    if (game.state !== STATE.PLAYING || game.paused) {
+      hand.visible = false;
+      return;
+    }
+    hand.visible = true;
+    raycaster.setFromCamera(ndc, camera);
+    // Project onto a plane 3.6 units in front of the camera, parallel to view plane
+    const dist = 3.6;
+    const point = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(dist));
+    hand.position.copy(point);
+    // hand.lookAt orients local +Z toward the duck head, so all five fingers point at it.
+    const lookAtPoint = new THREE.Vector3(duck.root.position.x, duck.root.position.y + 1.4 * DUCK_SCALE, duck.root.position.z);
+    hand.lookAt(lookAtPoint);
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
+  const tensionMeter = document.getElementById('tensionMeter');
+  const tensionFill = document.getElementById('tensionFill');
+  const tensionLabel = document.getElementById('tensionLabel');
+  const tensionTick = document.getElementById('tensionTick');
+  tensionTick.style.left = (TENSION_SAFE * 100) + '%';
+
+  function updateUI() {
+    if (game.state === STATE.PLAYING && game.tension > 0.02) {
+      tensionMeter.classList.add('visible');
+      const t = game.tension;
+      const hue = Math.max(0, 110 - t * 110);
+      tensionFill.style.width = (t * 100) + '%';
+      const pulse = t > 0.7 ? (0.85 + 0.15 * Math.sin(game.timeMs * 0.018)) : 1;
+      tensionFill.style.background = `hsl(${hue}, 85%, ${50 * pulse}%)`;
+      tensionLabel.textContent = t > TENSION_SAFE ? 'DANGER!' : 'Caution';
+    } else {
+      tensionMeter.classList.remove('visible');
+    }
+  }
+
+  // ============================================================
+  // GAME FLOW
+  // ============================================================
+  function startGame() {
+    game.state = STATE.PLAYING;
+    game.score = 0;
+    game.shake = 0; game.flash = 0;
+    game.tension = 0; game.paused = false; game.goldenBoost = 0;
+    duck.root.position.set(0, 0, 0);
+    dstate.bodyRot = 0; dstate.bodyRotTarget = 0;
+    dstate.walkTarget = null; dstate.walkPauseTimer = 0.5;
+    dstate.walkPhase = 0; dstate.walkSpeed = 0;
+    dstate.eatTimer = 0; dstate.eatPhase = 0; dstate.eatDip = 0;
+    dstate.reactionMouth = 0; dstate.tailShake = 0;
+    dstate.attackLunge = 0;
+    dstate._bitePuffed = false;
+
+    // Restore feathers
+    for (const f of duck.featherMeshes) {
+      f.userData.plucked = false;
+      f.position.copy(f.userData.basePos);
+      f.rotation.copy(f.userData.baseRot);
+      f.material = M.feather;
+      f.visible = true;
+      if (f.parent !== duck.root) duck.root.attach(f);
+    }
+
+    // Clear in-flight particles. Feather meshes get re-attached to the duck below,
+    // so we only dispose throwaway particle kinds.
+    for (const p of particles) {
+      scene.remove(p.m);
+      if (p.kind !== 'feather') {
+        if (p.m.geometry && p.m.geometry.dispose) p.m.geometry.dispose();
+        if (p.m.material && p.m.material.dispose) p.m.material.dispose();
+      }
+    }
+    particles.length = 0;
+
+    setDuckIdle();
+    dstate.look = 0; dstate.lookTarget = 0;
+    dstate.reactionTimer = Math.max(2200, dstate.reactionTimer);
+
+    document.getElementById('score').textContent = '0';
+    document.getElementById('hiscore').textContent = game.hiscore;
+    document.getElementById('titleScreen').classList.add('hidden');
+    document.getElementById('titleScreen').classList.remove('active');
+    document.getElementById('overScreen').classList.add('hidden');
+    document.getElementById('overScreen').classList.remove('active');
+    document.getElementById('goldenScreen').classList.add('hidden');
+    document.getElementById('goldenScreen').classList.remove('active');
+    document.getElementById('scoreUI').classList.remove('hidden');
+    document.getElementById('soundToggle').classList.remove('hidden');
+  }
+
+  function endGame() {
+    game.state = STATE.OVER;
+    document.getElementById('finalScore').textContent = game.score;
+    const newBest = game.score > game.hiscore;
+    document.getElementById('newBest').classList.toggle('hidden', !newBest);
+    if (newBest) {
+      game.hiscore = game.score;
+      localStorage.setItem('pluckHi3d', String(game.hiscore));
+      document.getElementById('hiscore').textContent = game.hiscore;
+    }
+    document.getElementById('overScreen').classList.remove('hidden');
+    document.getElementById('overScreen').classList.add('active');
+  }
+
+  function showGoldenPopup() {
+    if (game.state !== STATE.PLAYING) return;
+    if (dstate.s === DSTATE.ATTACK) return;
+    game.paused = true;
+    document.getElementById('goldenOldScore').textContent = game.score;
+    document.getElementById('goldenNewScore').textContent = game.score * 2;
+    const ov = document.getElementById('goldenScreen');
+    ov.classList.remove('hidden'); ov.classList.add('active');
+  }
+  function continueAfterGolden() {
+    game.score *= 2;
+    game.goldenBoost++;
+    document.getElementById('score').textContent = game.score;
+    const ov = document.getElementById('goldenScreen');
+    ov.classList.add('hidden'); ov.classList.remove('active');
+    game.paused = false;
+    game.tension = 0;
+    rollReactionTimer();
+  }
+
+  // ============================================================
+  // BIND UI
+  // ============================================================
+  document.getElementById('startBtn').addEventListener('click', e => { e.stopPropagation(); ac(); startGame(); });
+  document.getElementById('restartBtn').addEventListener('click', e => { e.stopPropagation(); ac(); startGame(); });
+  document.getElementById('goldenContinueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterGolden(); });
+  document.getElementById('soundToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    soundOn = !soundOn;
+    document.getElementById('soundToggle').textContent = soundOn ? '🔊' : '🔇';
+  });
+  ['titleScreen','overScreen','goldenScreen'].forEach(id => {
+    document.getElementById(id).addEventListener('mousedown', e => e.stopPropagation());
+    document.getElementById(id).addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+  });
+
+  // ============================================================
+  // MAIN LOOP
+  // ============================================================
+  let lastT = 0;
+  function loop(t) {
+    if (!lastT) lastT = t;
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+    update(dt);
+    updateHand();
+    updateUI();
+
+    // flash overlay (red wash on bite)
+    if (game.flash > 0) {
+      // we apply this via clearColor mix — simplest: keep clear color base + a fullscreen quad would be heavy.
+      // Instead, slightly bias the scene background to red.
+      const r = 0x88, g = 0xd3, b = 0xee;
+      const f = game.flash * 0.6;
+      const nr = Math.round(r * (1 - f) + 0xff * f);
+      const ng = Math.round(g * (1 - f) + 0x40 * f);
+      const nb = Math.round(b * (1 - f) + 0x40 * f);
+      scene.background.setRGB(nr/255, ng/255, nb/255);
+    } else if (scene.background.r !== 0x88/255) {
+      scene.background.setHex(COL.sky);
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+  hand.visible = false;
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
