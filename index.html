@@ -545,10 +545,14 @@
     // Also fire the legacy local Node helper (server.js) — silent if it's not running
     syncToServer(db);
   }
-  // POST the live database to the optional Node helper (server.js). Silently no-ops if the
-  // server isn't running or the page is opened via file://.
+  // POST the live database to the optional Node helper (server.js). Only runs on localhost so
+  // it doesn't 405 on GitHub Pages / production hosts where Firebase is the real backend.
+  const _isLocalDev =
+    typeof window !== 'undefined' &&
+    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.)/.test(window.location.hostname);
   let _lastSyncJson = null;
   function syncToServer(db) {
+    if (!_isLocalDev) return;        // skip on production — Firebase handles persistence there
     try {
       const payload = {
         _note: "Live game data is mirrored from browser localStorage (key 'pluckDb'). To reset all scores, clear localStorage.",
@@ -556,14 +560,12 @@
         users: db.users || {},
       };
       const body = JSON.stringify(payload);
-      // Cheap dedupe — skip the network call if nothing actually changed
       if (body === _lastSyncJson) return;
       _lastSyncJson = body;
       fetch('/api/save-db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
-        // keepalive lets the request survive page-unload (e.g. a tab close right after a bite)
         keepalive: true,
       }).catch(() => {});
     } catch(e) {}
